@@ -4,15 +4,16 @@ import Overview from './pages/Overview'
 import Resources from './pages/Resources'
 import Utilization from './pages/Utilization'
 import Timesheet from './pages/Timesheet'
+import Analytics from './pages/Analytics'
 
 const TABS = [
   { id: 'overview',    label: 'Overview',     icon: 'dashboard', active: true },
   { id: 'resources',   label: 'Resources',    icon: 'group', active: true },
   { id: 'utilization', label: 'Utilization',  icon: 'speed', active: true },
+  { id: 'analytics',   label: 'Analytics',    icon: 'insights', active: true },
   { id: 'timesheet',   label: 'Timesheet',    icon: 'schedule', active: true },
   { id: 'portfolio',   label: 'Portfolio',    icon: 'folder_special', active: false },
   { id: 'finance',     label: 'Finance',      icon: 'payments', active: false },
-  { id: 'sow',         label: 'SOW',          icon: 'description', active: false },
   { id: 'amm',         label: 'AMM',          icon: 'analytics', active: false },
 ]
 
@@ -49,6 +50,7 @@ function TabContent({ tabId }) {
   if (tabId === 'overview') return <Overview />
   if (tabId === 'resources') return <Resources />
   if (tabId === 'utilization') return <Utilization />
+  if (tabId === 'analytics') return <Analytics />
   if (tabId === 'timesheet') return <Timesheet />
 
   return null

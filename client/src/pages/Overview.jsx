@@ -72,6 +72,8 @@ export default function Overview() {
   const { req } = useApi();
   const [charts, setCharts] = useState({ clients: [], approval: {} });
   const [kpiTrends, setKpiTrends] = useState([]);
+  const [alerts, setAlerts] = useState([]);
+  const [dismissedAlerts, setDismissedAlerts] = useState(new Set());
 
   useEffect(() => {
     async function fetchCharts() {
@@ -79,11 +81,13 @@ export default function Overview() {
       const qs = selectedMonths.length > 0 ? `?months=${selectedMonths.join(',')}` : '';
 
       try {
-        const [clients, approval] = await Promise.all([
+        const [clients, approval, alertData] = await Promise.all([
           req(`/charts/clients${qs}`),
-          req(`/charts/approval${qs}`)
+          req(`/charts/approval${qs}`),
+          req(`/analytics/alerts${qs}`)
         ]);
         setCharts({ clients, approval });
+        setAlerts(alertData || []);
       } catch (err) {
         console.error("Failed to load overview charts", err);
       }
@@ -168,6 +172,44 @@ export default function Overview() {
           <h1 className="text-4xl font-extrabold text-on-surface tracking-tight leading-none">Executive Summary</h1>
         </div>
       </div>
+
+      {/* PMO Alert Feed */}
+      {alerts.length > 0 && (() => {
+        const visibleAlerts = alerts.filter((_, i) => !dismissedAlerts.has(i));
+        if (visibleAlerts.length === 0) return null;
+        return (
+          <div className="bg-surface-container-lowest rounded-xl border border-outline-variant/10 p-4">
+            <div className="flex items-center justify-between mb-3">
+              <div className="flex items-center gap-2">
+                <span className="material-symbols-outlined text-error text-lg">notification_important</span>
+                <span className="text-xs font-bold uppercase tracking-widest text-on-surface">PMO Alerts</span>
+                <span className="text-[9px] font-bold bg-error text-white px-1.5 py-0.5 rounded-full">{visibleAlerts.length}</span>
+              </div>
+            </div>
+            <div className="space-y-2 max-h-[200px] overflow-y-auto">
+              {alerts.map((alert, i) => {
+                if (dismissedAlerts.has(i)) return null;
+                const isCritical = alert.severity === 'critical';
+                return (
+                  <div key={i} className={`flex items-center gap-3 px-3 py-2 rounded-lg text-xs ${isCritical ? 'bg-red-50 border border-red-200' : 'bg-amber-50 border border-amber-200'}`}>
+                    <span className={`material-symbols-outlined text-sm ${isCritical ? 'text-red-600' : 'text-amber-600'}`}>
+                      {isCritical ? 'error' : 'warning'}
+                    </span>
+                    <span className={`font-semibold flex-1 ${isCritical ? 'text-red-800' : 'text-amber-800'}`}>{alert.message}</span>
+                    <span className={`text-[9px] font-bold uppercase px-1.5 py-0.5 rounded ${isCritical ? 'bg-red-100 text-red-700' : 'bg-amber-100 text-amber-700'}`}>
+                      {alert.type.replace('_', ' ')}
+                    </span>
+                    <button onClick={() => setDismissedAlerts(prev => new Set([...prev, i]))}
+                      className="text-slate-400 hover:text-slate-600 transition-colors">
+                      <span className="material-symbols-outlined text-sm">close</span>
+                    </button>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        );
+      })()}
 
       {/* Temporal KPI Cards */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
