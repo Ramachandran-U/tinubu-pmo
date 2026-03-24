@@ -37,6 +37,8 @@ export default function Analytics() {
   const [locationUtil, setLocationUtil] = useState([]);
   const [leaveDept, setLeaveDept] = useState('');
   const [rankMetric, setRankMetric] = useState('totalHours');
+  const [burnoutData, setBurnoutData] = useState({ employees: [], history: [] });
+  const [leaveForecast, setLeaveForecast] = useState(null);
 
   useEffect(() => {
     async function fetchData() {
@@ -46,14 +48,16 @@ export default function Analytics() {
       const qs = selectedMonths.length > 0 ? `?months=${selectedMonths.join(',')}` : '';
 
       try {
-        const [entity, empTrend, mgr, nb, prod, ranking, loc] = await Promise.all([
+        const [entity, empTrend, mgr, nb, prod, ranking, loc, burnout, forecast] = await Promise.all([
           req(`/analytics/entity-billing${allQs}`),
           req(`/analytics/employee-trend${allQs}`),
           req(`/analytics/manager-scorecard${qs}`),
           req(`/analytics/non-billable${qs}`),
           req(`/analytics/productivity-index${allQs}`),
           req(`/analytics/dept-ranking${allQs}`),
-          req(`/analytics/location-utilization${allQs}`)
+          req(`/analytics/location-utilization${allQs}`),
+          req('/analytics/burnout-risk'),
+          req('/analytics/leave-forecast')
         ]);
         setEntityData(entity || []);
         setEmployeeTrend(empTrend || []);
@@ -62,6 +66,8 @@ export default function Analytics() {
         setProdIndex(prod || []);
         setDeptRanking(ranking || []);
         setLocationUtil(loc || []);
+        setBurnoutData(burnout || { employees: [], history: [] });
+        setLeaveForecast(forecast || null);
       } catch (err) { console.error("Analytics fetch error", err); }
       finally { setLoading(false); }
     }
@@ -219,6 +225,8 @@ export default function Analytics() {
     { id: 'leave', label: 'Leave Calendar', icon: 'calendar_month' },
     { id: 'location', label: 'Locations', icon: 'public' },
     { id: 'forecast', label: 'Forecast', icon: 'auto_graph' },
+    { id: 'burnout', label: 'Burnout Risk', icon: 'local_fire_department' },
+    { id: 'leaveforecast', label: 'Leave Patterns', icon: 'event_repeat' },
   ];
 
   return (
@@ -509,6 +517,169 @@ export default function Analytics() {
               ))}
             </div>
           </div>
+        </div>
+      )}
+
+      {/* ═══ Burnout Risk Early Warning ═══ */}
+      {activeSection === 'burnout' && (
+        <div className="space-y-6">
+          {burnoutData.employees.length === 0 ? (
+            <div className="bg-surface-container-lowest rounded-xl border border-outline-variant/10 p-12 text-center">
+              <span className="material-symbols-outlined text-5xl text-emerald-500 mb-4 block">check_circle</span>
+              <h3 className="text-lg font-bold text-on-surface">No Burnout Risks Detected</h3>
+              <p className="text-sm text-on-surface-variant mt-2">All employees are within healthy workload thresholds. This analysis becomes more accurate with 3+ months of data.</p>
+            </div>
+          ) : (
+            <>
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                <div className="bg-red-50 p-4 rounded-lg border border-red-200">
+                  <p className="text-[10px] font-bold uppercase tracking-widest text-red-600">Critical Risk</p>
+                  <p className="text-2xl font-extrabold text-red-700 mt-1">{burnoutData.employees.filter(e => e.riskLevel === 'critical').length}</p>
+                </div>
+                <div className="bg-amber-50 p-4 rounded-lg border border-amber-200">
+                  <p className="text-[10px] font-bold uppercase tracking-widest text-amber-600">High Risk</p>
+                  <p className="text-2xl font-extrabold text-amber-700 mt-1">{burnoutData.employees.filter(e => e.riskLevel === 'high').length}</p>
+                </div>
+                <div className="bg-orange-50 p-4 rounded-lg border border-orange-200">
+                  <p className="text-[10px] font-bold uppercase tracking-widest text-orange-600">Elevated</p>
+                  <p className="text-2xl font-extrabold text-orange-700 mt-1">{burnoutData.employees.filter(e => e.riskLevel === 'elevated').length}</p>
+                </div>
+                <div className="bg-blue-50 p-4 rounded-lg border border-blue-200">
+                  <p className="text-[10px] font-bold uppercase tracking-widest text-blue-600">Watch List</p>
+                  <p className="text-2xl font-extrabold text-blue-700 mt-1">{burnoutData.employees.filter(e => e.riskLevel === 'watch').length}</p>
+                </div>
+              </div>
+
+              <div className="bg-surface-container-lowest rounded-xl overflow-hidden shadow-sm border border-outline-variant/10">
+                <div className="p-6 border-b border-outline-variant/10">
+                  <h3 className="text-lg font-bold text-on-surface">Burnout Risk Register</h3>
+                  <p className="text-xs text-on-surface-variant mt-1">{burnoutData.employees.length} employees flagged. Tracking {burnoutData.employees[0]?.monthsTracked || 0} month(s) of data.</p>
+                </div>
+                <div className="overflow-x-auto">
+                  <table className="w-full text-left border-collapse text-xs">
+                    <thead>
+                      <tr className="bg-surface-container">
+                        <th className="px-4 py-3 text-[10px] font-bold uppercase tracking-widest text-on-surface-variant">Employee</th>
+                        <th className="px-4 py-3 text-[10px] font-bold uppercase tracking-widest text-on-surface-variant">Department</th>
+                        <th className="px-4 py-3 text-[10px] font-bold uppercase tracking-widest text-on-surface-variant text-right">Latest Hours</th>
+                        <th className="px-4 py-3 text-[10px] font-bold uppercase tracking-widest text-on-surface-variant text-right">Avg Hours</th>
+                        <th className="px-4 py-3 text-[10px] font-bold uppercase tracking-widest text-on-surface-variant text-center">Monthly Trend</th>
+                        <th className="px-4 py-3 text-[10px] font-bold uppercase tracking-widest text-on-surface-variant text-center">Risk Level</th>
+                        <th className="px-4 py-3 text-[10px] font-bold uppercase tracking-widest text-on-surface-variant">Reason</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-outline-variant/10">
+                      {burnoutData.employees.map((e, i) => {
+                        const empHistory = burnoutData.history.filter(h => h.employeeId === e.employeeId).sort((a, b) => a.yearMonth.localeCompare(b.yearMonth));
+                        const riskColors = { critical: 'bg-red-100 text-red-700 border-red-200', high: 'bg-amber-100 text-amber-700 border-amber-200', elevated: 'bg-orange-100 text-orange-700 border-orange-200', watch: 'bg-blue-100 text-blue-700 border-blue-200' };
+                        return (
+                          <tr key={i} className="hover:bg-surface-container-low/50">
+                            <td className="px-4 py-3 font-semibold text-on-surface">{e.fullName}</td>
+                            <td className="px-4 py-3 text-on-surface-variant">{e.department}</td>
+                            <td className={`px-4 py-3 text-right font-bold ${e.latestHours > 160 ? 'text-red-600' : 'text-on-surface'}`}>{fmtHr(e.latestHours)}</td>
+                            <td className="px-4 py-3 text-right font-bold">{fmtHr(e.avgHours)}</td>
+                            <td className="px-4 py-3">
+                              <div className="flex items-center justify-center gap-0.5">
+                                {empHistory.map((h, j) => {
+                                  const barH = Math.min(24, Math.max(4, h.totalHours / 10));
+                                  return (
+                                    <div key={j} className="flex flex-col items-center" title={`${h.yearMonth}: ${fmtHr(h.totalHours)}h`}>
+                                      <div className={`w-3 rounded-sm ${h.totalHours > 160 ? 'bg-red-500' : h.totalHours > 130 ? 'bg-amber-400' : 'bg-blue-300'}`} style={{ height: `${barH}px` }}></div>
+                                    </div>
+                                  );
+                                })}
+                              </div>
+                            </td>
+                            <td className="px-4 py-3 text-center">
+                              <span className={`px-2 py-0.5 rounded text-[9px] font-bold uppercase border ${riskColors[e.riskLevel] || ''}`}>{e.riskLevel}</span>
+                            </td>
+                            <td className="px-4 py-3 text-on-surface-variant">{e.riskReason}</td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </>
+          )}
+        </div>
+      )}
+
+      {/* ═══ Leave Patterns & Forecast ═══ */}
+      {activeSection === 'leaveforecast' && leaveForecast && (
+        <div className="space-y-6">
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            {/* Day of Week Pattern */}
+            <ChartCard title="Leave by Day of Week" subtitle="Average employees on leave per weekday" className="h-[350px]">
+              {leaveForecast.byDayOfWeek.length > 0 ? (
+                <Bar data={{
+                  labels: leaveForecast.byDayOfWeek.map(d => d.dayName.substring(0, 3)),
+                  datasets: [{ label: 'Avg Leave/Day', data: leaveForecast.byDayOfWeek.map(d => d.avgPerDay), backgroundColor: palette.slice(0, 7), borderRadius: 4 }]
+                }} options={{ ...commonOptions, plugins: { legend: { display: false } } }} />
+              ) : <div className="flex h-full items-center justify-center text-on-surface-variant italic text-sm">No data</div>}
+            </ChartCard>
+
+            {/* Leave Type Distribution */}
+            <ChartCard title="Leave Type Distribution" subtitle="Breakdown by leave code">
+              {leaveForecast.leaveTypes.length > 0 ? (
+                <div className="h-full flex items-center justify-center pb-4 pt-2">
+                  <Doughnut data={{
+                    labels: leaveForecast.leaveTypes.map(t => t.type),
+                    datasets: [{ data: leaveForecast.leaveTypes.map(t => t.count), backgroundColor: palette, borderWidth: 0 }]
+                  }} options={{ ...commonOptions, cutout: '60%', plugins: { legend: { position: 'right', labels: { font: { size: 10 }, padding: 6 } } } }} />
+                </div>
+              ) : <div className="flex h-full items-center justify-center text-on-surface-variant italic text-sm">No data</div>}
+            </ChartCard>
+          </div>
+
+          {/* Week of Month Pattern */}
+          {leaveForecast.byWeekOfMonth.length > 0 && (
+            <ChartCard title="Leave by Week of Month" subtitle="Which week has the most leave activity?" className="h-[300px]">
+              <Bar data={{
+                labels: leaveForecast.byWeekOfMonth.map(d => `Week ${d.weekOfMonth}`),
+                datasets: [{ label: 'Leave Count', data: leaveForecast.byWeekOfMonth.map(d => d.leaveCount), backgroundColor: chartColors.primary, borderRadius: 4 }]
+              }} options={{ ...commonOptions, plugins: { legend: { display: false } } }} />
+            </ChartCard>
+          )}
+
+          {/* Monthly Trend */}
+          {leaveForecast.monthly.length > 0 && (
+            <ChartCard title="Monthly Leave Trend" subtitle="Total leave events per month" className="h-[300px]">
+              <Line data={{
+                labels: leaveForecast.monthly.map(d => d.yearMonth),
+                datasets: [{
+                  label: 'Leave Events', data: leaveForecast.monthly.map(d => d.leaveCount),
+                  borderColor: chartColors.error, backgroundColor: 'rgba(186,26,26,0.1)', fill: true, tension: 0.3, pointRadius: 4
+                }, {
+                  label: 'Employees Affected', data: leaveForecast.monthly.map(d => d.employeesAffected),
+                  borderColor: chartColors.primary, tension: 0.3, pointRadius: 4
+                }]
+              }} options={{ ...commonOptions, plugins: { legend: { position: 'top' } } }} />
+            </ChartCard>
+          )}
+
+          {/* Top Leave Takers */}
+          {leaveForecast.topLeaveTakers.length > 0 && (
+            <DataTable title="Top Leave Takers" subtitle="Employees with the most leave days across all periods"
+              data={leaveForecast.topLeaveTakers} columns={[
+                { key: 'name', label: 'Employee' },
+                { key: 'department', label: 'Department' },
+                { key: 'totalLeaveDays', label: 'Leave Days', rightAlign: true, render: (_, v) => <span className="font-bold text-error">{v}</span> },
+                { key: 'leaveTypes', label: 'Leave Types', render: (_, v) => (
+                  <div className="flex gap-1 flex-wrap">
+                    {(v || []).map((t, i) => <span key={i} className="px-1.5 py-0.5 bg-slate-100 text-slate-600 rounded text-[9px] font-bold">{t}</span>)}
+                  </div>
+                )}
+              ]} />
+          )}
+        </div>
+      )}
+      {activeSection === 'leaveforecast' && !leaveForecast && (
+        <div className="bg-surface-container-lowest rounded-xl border border-outline-variant/10 p-12 text-center">
+          <span className="material-symbols-outlined text-5xl text-on-surface-variant mb-4 block">event_repeat</span>
+          <h3 className="text-lg font-bold text-on-surface">Leave Forecast Unavailable</h3>
+          <p className="text-sm text-on-surface-variant mt-2">Upload more historical data to enable leave pattern analysis.</p>
         </div>
       )}
     </div>

@@ -717,4 +717,217 @@ router.get('/location-utilization', async (req, res, next) => {
   } catch (err) { next(err); }
 });
 
+// ============================================================
+// Phase 3 Endpoints
+// ============================================================
+
+/**
+ * GET /api/analytics/burnout-risk?months=...
+ * Identifies employees with sustained high hours (>160h) across consecutive months.
+ * Works with any amount of data but becomes meaningful with 3+ months.
+ */
+router.get('/burnout-risk', async (req, res, next) => {
+  try {
+    const { selectedMonths } = req;
+
+    // Get all available months for trend analysis (ignore filter for this)
+    const result = await pool.query(`
+      WITH employee_monthly AS (
+        SELECT
+          employee_id,
+          MAX(full_name) AS full_name,
+          MAX(department) AS department,
+          year_month,
+          SUM(total_hours) AS total_hours,
+          CASE WHEN SUM(total_hours) > 160 THEN 1 ELSE 0 END AS is_overloaded,
+          CASE WHEN SUM(total_hours) > 130 THEN 1 ELSE 0 END AS is_high_load
+        FROM mv_resource_summary
+        GROUP BY employee_id, year_month
+      ),
+      with_consecutive AS (
+        SELECT *,
+          SUM(is_overloaded) OVER (
+            PARTITION BY employee_id ORDER BY year_month
+            ROWS BETWEEN 2 PRECEDING AND CURRENT ROW
+          ) AS consecutive_overload_3,
+          SUM(is_overloaded) OVER (
+            PARTITION BY employee_id ORDER BY year_month
+            ROWS BETWEEN 1 PRECEDING AND CURRENT ROW
+          ) AS consecutive_overload_2,
+          SUM(is_high_load) OVER (
+            PARTITION BY employee_id ORDER BY year_month
+            ROWS BETWEEN 2 PRECEDING AND CURRENT ROW
+          ) AS consecutive_high_3,
+          COUNT(*) OVER (PARTITION BY employee_id) AS months_tracked,
+          AVG(total_hours) OVER (PARTITION BY employee_id) AS avg_hours
+        FROM employee_monthly
+      )
+      SELECT DISTINCT ON (employee_id)
+        employee_id, full_name, department, year_month,
+        total_hours, consecutive_overload_3, consecutive_overload_2,
+        consecutive_high_3, months_tracked, avg_hours
+      FROM with_consecutive
+      ORDER BY employee_id, year_month DESC
+    `);
+
+    const employees = result.rows.map(r => {
+      let riskLevel = 'normal';
+      let riskReason = '';
+      if (Number(r.consecutive_overload_3) >= 3) {
+        riskLevel = 'critical';
+        riskReason = '3+ consecutive months >160h';
+      } else if (Number(r.consecutive_overload_2) >= 2) {
+        riskLevel = 'high';
+        riskReason = '2 consecutive months >160h';
+      } else if (Number(r.consecutive_high_3) >= 3) {
+        riskLevel = 'elevated';
+        riskReason = '3+ consecutive months >130h';
+      } else if (Number(r.total_hours) > 160) {
+        riskLevel = 'watch';
+        riskReason = 'Current month >160h';
+      }
+
+      return {
+        employeeId: r.employee_id,
+        fullName: r.full_name,
+        department: r.department,
+        latestMonth: r.year_month,
+        latestHours: Number(r.total_hours),
+        avgHours: Math.round(Number(r.avg_hours) * 10) / 10,
+        monthsTracked: Number(r.months_tracked),
+        riskLevel,
+        riskReason
+      };
+    }).filter(e => e.riskLevel !== 'normal')
+      .sort((a, b) => {
+        const order = { critical: 0, high: 1, elevated: 2, watch: 3 };
+        return (order[a.riskLevel] || 4) - (order[b.riskLevel] || 4) || b.latestHours - a.latestHours;
+      });
+
+    // Also return per-employee monthly history for the flagged employees
+    const flaggedIds = employees.map(e => e.employeeId);
+    let history = [];
+    if (flaggedIds.length > 0) {
+      const histResult = await pool.query(`
+        SELECT employee_id, year_month, SUM(total_hours) AS total_hours
+        FROM mv_resource_summary
+        WHERE employee_id = ANY($1::text[])
+        GROUP BY employee_id, year_month
+        ORDER BY employee_id, year_month
+      `, [flaggedIds]);
+      history = histResult.rows.map(r => ({
+        employeeId: r.employee_id,
+        yearMonth: r.year_month,
+        totalHours: Number(r.total_hours)
+      }));
+    }
+
+    res.json({ employees, history });
+  } catch (err) { next(err); }
+});
+
+/**
+ * GET /api/analytics/leave-forecast
+ * Predicts high-leave periods based on historical leave patterns.
+ * Groups by day-of-week and week-of-month to detect seasonality.
+ */
+router.get('/leave-forecast', async (req, res, next) => {
+  try {
+    // Day-of-week leave patterns (0=Sun, 6=Sat)
+    const dowResult = await pool.query(`
+      SELECT
+        EXTRACT(DOW FROM date) AS day_of_week,
+        COUNT(*) AS leave_count,
+        COUNT(DISTINCT date) AS dates_seen,
+        COUNT(DISTINCT employee_id) AS employees_affected,
+        array_agg(DISTINCT status) AS leave_types
+      FROM attendance
+      WHERE status NOT IN ('P','PDA','W','H','-','')
+      GROUP BY EXTRACT(DOW FROM date)
+      ORDER BY day_of_week
+    `);
+
+    // Week-of-month patterns
+    const womResult = await pool.query(`
+      SELECT
+        CEIL(EXTRACT(DAY FROM date) / 7.0) AS week_of_month,
+        COUNT(*) AS leave_count,
+        COUNT(DISTINCT date) AS dates_seen,
+        COUNT(DISTINCT employee_id) AS employees_affected
+      FROM attendance
+      WHERE status NOT IN ('P','PDA','W','H','-','')
+      GROUP BY CEIL(EXTRACT(DAY FROM date) / 7.0)
+      ORDER BY week_of_month
+    `);
+
+    // Monthly leave totals (for trend)
+    const monthlyResult = await pool.query(`
+      SELECT year_month,
+        COUNT(*) AS leave_count,
+        COUNT(DISTINCT employee_id) AS employees_affected,
+        COUNT(DISTINCT date) AS leave_days
+      FROM attendance
+      WHERE status NOT IN ('P','PDA','W','H','-','')
+      GROUP BY year_month
+      ORDER BY year_month
+    `);
+
+    // Top leave takers
+    const topResult = await pool.query(`
+      SELECT employee_id, MAX(employee_name) AS name, MAX(department) AS department,
+        COUNT(*) AS total_leave_days, array_agg(DISTINCT status) AS leave_types
+      FROM attendance
+      WHERE status NOT IN ('P','PDA','W','H','-','')
+      GROUP BY employee_id
+      ORDER BY total_leave_days DESC
+      LIMIT 15
+    `);
+
+    // Leave type distribution
+    const typeResult = await pool.query(`
+      SELECT status AS leave_type, COUNT(*) AS count
+      FROM attendance
+      WHERE status NOT IN ('P','PDA','W','H','-','')
+      GROUP BY status
+      ORDER BY count DESC
+    `);
+
+    const dayNames = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+
+    res.json({
+      byDayOfWeek: dowResult.rows.map(r => ({
+        dayOfWeek: Number(r.day_of_week),
+        dayName: dayNames[Number(r.day_of_week)],
+        leaveCount: Number(r.leave_count),
+        datesSeen: Number(r.dates_seen),
+        employeesAffected: Number(r.employees_affected),
+        avgPerDay: Number(r.dates_seen) > 0 ? Math.round(Number(r.leave_count) / Number(r.dates_seen) * 10) / 10 : 0
+      })),
+      byWeekOfMonth: womResult.rows.map(r => ({
+        weekOfMonth: Number(r.week_of_month),
+        leaveCount: Number(r.leave_count),
+        datesSeen: Number(r.dates_seen),
+        employeesAffected: Number(r.employees_affected)
+      })),
+      monthly: monthlyResult.rows.map(r => ({
+        yearMonth: r.year_month,
+        leaveCount: Number(r.leave_count),
+        employeesAffected: Number(r.employees_affected),
+        leaveDays: Number(r.leave_days)
+      })),
+      topLeaveTakers: topResult.rows.map(r => ({
+        employeeId: r.employee_id,
+        name: r.name,
+        department: r.department,
+        totalLeaveDays: Number(r.total_leave_days),
+        leaveTypes: r.leave_types.filter(Boolean)
+      })),
+      leaveTypes: typeResult.rows.map(r => ({
+        type: r.leave_type,
+        count: Number(r.count)
+      }))
+    });
+  } catch (err) { next(err); }
+});
+
 module.exports = router;
