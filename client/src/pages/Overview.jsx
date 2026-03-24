@@ -1,21 +1,83 @@
 import { useState, useEffect } from 'react';
 import { useData } from '../context/DataContext';
 import { useApi } from '../hooks/useApi';
-import KpiCard from '../components/KpiCard';
 import ChartCard from '../components/ChartCard';
 import { chartColors, commonOptions } from '../charts/chart-config';
-import { Bar, Doughnut } from 'react-chartjs-2';
+import { Bar, Doughnut, Line } from 'react-chartjs-2';
+
+function Sparkline({ data, color = '#004ac6', height = 32 }) {
+  if (!data || data.length < 2) return null;
+  const max = Math.max(...data);
+  const min = Math.min(...data);
+  const range = max - min || 1;
+  const w = data.length * 12;
+  const points = data.map((v, i) => `${(i / (data.length - 1)) * w},${height - ((v - min) / range) * (height - 4) - 2}`).join(' ');
+  return (
+    <svg width={w} height={height} className="inline-block">
+      <polyline points={points} fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
+function TrendBadge({ current, previous }) {
+  if (previous == null || previous === 0) return null;
+  const pctChange = Math.round(((current - previous) / previous) * 100);
+  const isUp = pctChange > 0;
+  const isFlat = Math.abs(pctChange) < 2;
+  const color = isFlat ? 'text-slate-500 bg-slate-100' : isUp ? 'text-emerald-700 bg-emerald-50' : 'text-red-700 bg-red-50';
+  const icon = isFlat ? 'remove' : isUp ? 'arrow_upward' : 'arrow_downward';
+  return (
+    <span className={`inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[10px] font-bold ${color}`}>
+      <span className="material-symbols-outlined text-[10px]">{icon}</span>
+      {Math.abs(pctChange)}%
+    </span>
+  );
+}
+
+function TemporalKpiCard({ title, value, icon, trend, sparklineData, sparklineColor, thresholds, highlight = false }) {
+  let statusColor = '';
+  if (thresholds && typeof trend?.current === 'number') {
+    const v = trend.current;
+    if (v >= thresholds.green) statusColor = 'border-l-emerald-500';
+    else if (v >= thresholds.yellow) statusColor = 'border-l-amber-500';
+    else statusColor = 'border-l-red-500';
+  }
+
+  return (
+    <div className={`bg-surface-container-lowest p-5 rounded-lg border border-outline-variant/10 shadow-sm flex flex-col gap-2 transition-all hover:bg-surface-bright ${statusColor ? `border-l-4 ${statusColor}` : ''}`}>
+      <div className={`flex items-center justify-between ${highlight ? 'text-primary' : 'text-on-surface-variant'}`}>
+        <span className="text-[10px] font-bold uppercase tracking-widest">{title}</span>
+        {icon && <span className="material-symbols-outlined text-lg">{icon}</span>}
+      </div>
+      <div className="flex items-end justify-between gap-2">
+        <div>
+          <span className="text-3xl font-extrabold tracking-tight text-on-surface">{value}</span>
+          {trend && (
+            <div className="flex items-center gap-2 mt-1">
+              <TrendBadge current={trend.current} previous={trend.previous} />
+              {trend.label && <span className="text-[10px] text-on-surface-variant">{trend.label}</span>}
+            </div>
+          )}
+        </div>
+        {sparklineData && sparklineData.length > 1 && (
+          <Sparkline data={sparklineData} color={sparklineColor || '#004ac6'} />
+        )}
+      </div>
+    </div>
+  );
+}
 
 export default function Overview() {
-  const { kpis, loadingInitial, isRefreshing, selectedMonths } = useData();
+  const { kpis, loadingInitial, isRefreshing, selectedMonths, availableMonths } = useData();
   const { req } = useApi();
   const [charts, setCharts] = useState({ clients: [], approval: {} });
+  const [kpiTrends, setKpiTrends] = useState([]);
 
   useEffect(() => {
     async function fetchCharts() {
       if (loadingInitial) return;
       const qs = selectedMonths.length > 0 ? `?months=${selectedMonths.join(',')}` : '';
-      
+
       try {
         const [clients, approval] = await Promise.all([
           req(`/charts/clients${qs}`),
@@ -29,7 +91,21 @@ export default function Overview() {
     fetchCharts();
   }, [selectedMonths, loadingInitial, req]);
 
-  // Loading skeleton
+  // Fetch temporal KPI data — use all available months for sparkline context
+  useEffect(() => {
+    async function fetchTrends() {
+      if (loadingInitial || availableMonths.length === 0) return;
+      try {
+        const allMonths = availableMonths.join(',');
+        const data = await req(`/analytics/kpi-trends?months=${allMonths}`);
+        setKpiTrends(data || []);
+      } catch (err) {
+        console.error("Failed to load KPI trends", err);
+      }
+    }
+    fetchTrends();
+  }, [availableMonths, loadingInitial, req]);
+
   if (loadingInitial) {
     return (
       <div className="flex flex-col items-center justify-center p-16 h-full text-on-surface-variant">
@@ -39,9 +115,15 @@ export default function Overview() {
     );
   }
 
-  // Formatting helpers
   const fmtHr = (n) => (n || 0).toLocaleString(undefined, { maximumFractionDigits: 1 });
   const fmtNum = (n) => (n || 0).toLocaleString();
+
+  // Derive MoM data from kpiTrends
+  const latestMonth = selectedMonths.length > 0 ? selectedMonths[selectedMonths.length - 1] : null;
+  const latestTrend = kpiTrends.find(t => t.yearMonth === latestMonth || t.year_month === latestMonth);
+  const sortedTrends = [...kpiTrends].sort((a, b) => (a.yearMonth || a.year_month || '').localeCompare(b.yearMonth || b.year_month || ''));
+  const latestIdx = sortedTrends.findIndex(t => (t.yearMonth || t.year_month) === latestMonth);
+  const prevTrend = latestIdx > 0 ? sortedTrends[latestIdx - 1] : null;
 
   // Chart Data preparation
   const clientData = {
@@ -56,7 +138,7 @@ export default function Overview() {
 
   const appValues = charts.approval;
   const hasApprovalData = Object.keys(appValues).length > 0;
-  
+
   const approvalData = {
     labels: ['Approved', 'Pending', 'Draft', 'Not Submitted'],
     datasets: [{
@@ -86,61 +168,79 @@ export default function Overview() {
           <h1 className="text-4xl font-extrabold text-on-surface tracking-tight leading-none">Executive Summary</h1>
         </div>
       </div>
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-        <KpiCard 
-          title="Total Hours" 
-          value={fmtHr(kpis?.totalHours)} 
-          icon="history" 
-          highlight 
+
+      {/* Temporal KPI Cards */}
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
+        <TemporalKpiCard
+          title="Total Hours"
+          value={fmtHr(kpis?.totalHours)}
+          icon="history"
+          highlight
+          trend={latestTrend ? { current: latestTrend.totalHours, previous: prevTrend?.totalHours, label: 'vs prior month' } : null}
+          sparklineData={sortedTrends.map(t => t.totalHours)}
+          sparklineColor={chartColors.primary}
         />
-        <KpiCard 
-          title="Billable Hours" 
-          value={fmtHr(kpis?.billableHours)} 
-          icon="payments" 
-          trend={`${kpis?.billablePct || 0}% billability rate`}
-          trendIcon="check_circle"
-          trendColor="text-blue-400"
+        <TemporalKpiCard
+          title="Billable Hours"
+          value={fmtHr(kpis?.billableHours)}
+          icon="payments"
+          trend={latestTrend ? { current: latestTrend.billableHours, previous: prevTrend?.billableHours, label: `${kpis?.billablePct || 0}% rate` } : null}
+          sparklineData={sortedTrends.map(t => t.billableHours)}
+          sparklineColor={chartColors.emerald}
+          thresholds={{ green: 70, yellow: 50 }}
         />
-        <KpiCard 
-          title="Active Projects" 
-          value={fmtNum(kpis?.uniqueProjects)} 
-          icon="rocket_launch" 
+        <TemporalKpiCard
+          title="Active Projects"
+          value={fmtNum(kpis?.uniqueProjects)}
+          icon="rocket_launch"
+          trend={latestTrend ? { current: latestTrend.uniqueProjects, previous: prevTrend?.uniqueProjects } : null}
+          sparklineData={sortedTrends.map(t => t.uniqueProjects)}
+          sparklineColor={chartColors.secondary}
         />
-        <KpiCard 
-          title="Attendance Pulse" 
-          value={`${fmtNum(kpis?.totalPresent)} present`}
-          icon="person_check" 
-          trend={`${fmtNum(kpis?.totalAbsent)} absent`}
-          trendIcon="event_busy"
-          trendColor="text-red-400"
+        <TemporalKpiCard
+          title="Attendance Pulse"
+          value={`${latestTrend?.attendanceRate || 0}%`}
+          icon="person_check"
+          trend={latestTrend ? { current: latestTrend.attendanceRate, previous: prevTrend?.attendanceRate, label: `${fmtNum(kpis?.totalPresent)} present` } : null}
+          sparklineData={sortedTrends.map(t => t.attendanceRate)}
+          sparklineColor={chartColors.emerald}
+          thresholds={{ green: 95, yellow: 85 }}
+        />
+        <TemporalKpiCard
+          title="Headcount"
+          value={fmtNum(kpis?.uniqueEmployees)}
+          icon="groups"
+          trend={latestTrend ? { current: latestTrend.uniqueEmployees, previous: prevTrend?.uniqueEmployees, label: `${kpis?.attendanceEmployees || 0} tracked` } : null}
+          sparklineData={sortedTrends.map(t => t.uniqueEmployees)}
+          sparklineColor={chartColors.tertiary}
         />
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        <ChartCard 
-          title="Client Allocation" 
+        <ChartCard
+          title="Client Allocation"
           subtitle="Top 7 clients by executed hours"
           className="lg:col-span-2"
         >
           {charts.clients.length > 0 ? (
-            <Bar 
-              data={clientData} 
-              options={{ ...commonOptions, plugins: { legend: { display: false } } }} 
+            <Bar
+              data={clientData}
+              options={{ ...commonOptions, plugins: { legend: { display: false } } }}
             />
           ) : (
             <div className="flex h-full items-center justify-center text-slate-500 italic text-sm">No client data</div>
           )}
         </ChartCard>
-        
-        <ChartCard 
-          title="Timesheet Approvals" 
+
+        <ChartCard
+          title="Timesheet Approvals"
           subtitle="Status breakdown by hours"
         >
           {hasApprovalData ? (
              <div className="h-full flex items-center justify-center pb-4 pt-2">
-                <Doughnut 
-                  data={approvalData} 
-                  options={{ ...commonOptions, cutout: '75%', plugins: { legend: { position: 'bottom' } } }} 
+                <Doughnut
+                  data={approvalData}
+                  options={{ ...commonOptions, cutout: '75%', plugins: { legend: { position: 'bottom' } } }}
                 />
              </div>
           ) : (
@@ -148,7 +248,8 @@ export default function Overview() {
           )}
         </ChartCard>
       </div>
-      {/* ── Bento-style Bottom Section ── */}
+
+      {/* Bento-style Bottom Section */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
         {/* Top Resource Insights Table */}
         <div className="bg-surface-container-low rounded-xl overflow-hidden flex flex-col">

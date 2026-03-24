@@ -72,6 +72,11 @@ CREATE INDEX IF NOT EXISTS idx_att_employee   ON attendance(employee_id);
 CREATE INDEX IF NOT EXISTS idx_att_upload     ON attendance(upload_id);
 
 
+-- ━━━ Upload Versioning columns ━━━
+ALTER TABLE uploads ADD COLUMN IF NOT EXISTS version INTEGER DEFAULT 1;
+ALTER TABLE uploads ADD COLUMN IF NOT EXISTS is_active BOOLEAN DEFAULT TRUE;
+ALTER TABLE uploads ADD COLUMN IF NOT EXISTS uploaded_by TEXT DEFAULT 'system';
+
 -- ============================================================
 -- Materialized Views (refreshed after each upload)
 -- ============================================================

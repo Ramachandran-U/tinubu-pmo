@@ -27,6 +27,7 @@ app.use('/api/timelog', require('./routes/timelog'));
 app.use('/api/attendance', require('./routes/attendance'));
 app.use('/api/heatmap', require('./routes/heatmap'));
 app.use('/api/charts', require('./routes/charts'));
+app.use('/api/analytics', require('./routes/analytics'));
 
 // ── Serve frontend in production ───────────────────────────
 if (process.env.NODE_ENV === 'production') {

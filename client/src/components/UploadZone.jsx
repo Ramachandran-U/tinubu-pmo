@@ -56,7 +56,8 @@ export default function UploadZone({ endpoint, title, info, onUploadSuccess }) {
         body: formData
       });
       
-      setSuccessMsg(`Successfully parsed ${res.rowCount} rows for period ${res.yearMonth}.`);
+      const versionLabel = res.version ? ` (v${res.version})` : '';
+      setSuccessMsg(`Successfully parsed ${res.rowCount} rows for period ${res.yearMonth}${versionLabel}.`);
       setFile(null);
       if (onUploadSuccess) onUploadSuccess();
       
