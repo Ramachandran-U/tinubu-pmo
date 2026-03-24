@@ -1,0 +1,95 @@
+@import "tailwindcss";
+
+@theme {
+  --color-inverse-surface: #2d3133;
+  --color-on-secondary-fixed: #00174b;
+  --color-on-primary-fixed: #00174b;
+  --color-on-error-container: #93000a;
+  --color-error: #ba1a1a;
+  --color-tertiary: #943700;
+  --color-surface-variant: #e0e3e5;
+  --color-surface: #f7f9fb;
+  --color-secondary-fixed-dim: #b4c5ff;
+  --color-tertiary-container: #bc4800;
+  --color-surface-dim: #d8dadc;
+  --color-on-primary-fixed-variant: #003ea8;
+  --color-primary-fixed: #dbe1ff;
+  --color-surface-container-lowest: #ffffff;
+  --color-surface-container-low: #f2f4f6;
+  --color-secondary: #495c95;
+  --color-inverse-on-surface: #eff1f3;
+  --color-surface-container: #eceef0;
+  --color-on-primary: #ffffff;
+  --color-on-secondary: #ffffff;
+  --color-outline-variant: #c3c6d7;
+  --color-on-background: #191c1e;
+  --color-on-secondary-fixed-variant: #31447b;
+  --color-surface-container-high: #e6e8ea;
+  --color-outline: #737686;
+  --color-on-surface: #191c1e;
+  --color-inverse-primary: #b4c5ff;
+  --color-error-container: #ffdad6;
+  --color-primary: #004ac6;
+  --color-secondary-fixed: #dbe1ff;
+  --color-on-secondary-container: #394c84;
+  --color-surface-tint: #0053db;
+  --color-surface-bright: #f7f9fb;
+  --color-tertiary-fixed-dim: #ffb596;
+  --color-primary-container: #2563eb;
+  --color-on-tertiary-container: #ffede6;
+  --color-on-surface-variant: #434655;
+  --color-tertiary-fixed: #ffdbcd;
+  --color-on-tertiary: #ffffff;
+  --color-primary-fixed-dim: #b4c5ff;
+  --color-secondary-container: #acbfff;
+  --color-background: #f7f9fb;
+  --color-on-tertiary-fixed: #360f00;
+  --color-on-tertiary-fixed-variant: #7d2d00;
+  --color-on-primary-container: #eeefff;
+  --color-surface-container-highest: #e0e3e5;
+  --color-on-error: #ffffff;
+
+  --font-inter: "Inter", sans-serif;
+}
+
+@layer utilities {
+  .primary-gradient {
+    background: linear-gradient(135deg, var(--color-primary) 0%, var(--color-primary-container) 100%);
+  }
+}
+
+body {
+  font-family: var(--font-inter);
+  background-color: var(--color-background);
+  color: var(--color-on-surface);
+  -webkit-font-smoothing: antialiased;
+}
+
+.material-symbols-outlined {
+  font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+  vertical-align: middle;
+}
+
+/* Custom Scrollbar for modern look */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+::-webkit-scrollbar-track {
+  background: var(--color-surface-container-low);
+}
+::-webkit-scrollbar-thumb {
+  background: var(--color-outline-variant);
+  border-radius: 4px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: var(--color-outline);
+}
+
+.hide-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+.hide-scrollbar {
+  -ms-overflow-style: none; /* IE and Edge */
+  scrollbar-width: none; /* Firefox */
+}
