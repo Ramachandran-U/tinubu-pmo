@@ -36,6 +36,7 @@ export default function Analytics() {
   const [leaveCalendar, setLeaveCalendar] = useState({});
   const [locationUtil, setLocationUtil] = useState([]);
   const [leaveDept, setLeaveDept] = useState('');
+  const [rankMetric, setRankMetric] = useState('totalHours');
 
   useEffect(() => {
     async function fetchData() {
@@ -169,7 +170,6 @@ export default function Analytics() {
 
   // ── Dept Racing ──
   const rankMonths = [...new Set(deptRanking.map(d => d.yearMonth))].sort();
-  const [rankMetric, setRankMetric] = useState('totalHours');
   const rankDepts = [...new Set(deptRanking.map(d => d.department))].filter(Boolean);
   const latestRankMonth = rankMonths[rankMonths.length - 1];
   const latestRanking = deptRanking.filter(d => d.yearMonth === latestRankMonth).sort((a, b) => b[rankMetric] - a[rankMetric]).slice(0, 12);

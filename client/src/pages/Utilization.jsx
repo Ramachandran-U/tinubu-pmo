@@ -38,7 +38,7 @@ export default function Utilization() {
       try {
         const [heatData, logsData, compData, deptData, attData] = await Promise.all([
           req(`/heatmap${qs}`),
-          req(`/timelog${qs}?pageSize=200`),
+          req(`/timelog${qs}${qs ? '&' : '?'}pageSize=200`),
           req(`/analytics/compliance${allQs}`),
           req(`/analytics/dept-heatmap${allQs}`),
           req(`/analytics/attendance-trend${allQs}`)
@@ -284,26 +284,27 @@ export default function Utilization() {
           {/* Compliance Summary Cards */}
           {compliance.length > 0 && (
             <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-              {compliance.slice(-1).map(c => (
-                <>
-                  <div key="total" className="bg-surface-container-lowest p-4 rounded-lg border border-outline-variant/10">
+              {(() => {
+                const c = compliance[compliance.length - 1];
+                return <>
+                  <div className="bg-surface-container-lowest p-4 rounded-lg border border-outline-variant/10">
                     <p className="text-[10px] font-bold uppercase tracking-widest text-on-surface-variant">Total Entries</p>
                     <p className="text-2xl font-extrabold text-on-surface mt-1">{c.totalEntries.toLocaleString()}</p>
                   </div>
-                  <div key="approved" className="bg-surface-container-lowest p-4 rounded-lg border border-outline-variant/10">
+                  <div className="bg-surface-container-lowest p-4 rounded-lg border border-outline-variant/10">
                     <p className="text-[10px] font-bold uppercase tracking-widest text-on-surface-variant">Approved</p>
                     <p className="text-2xl font-extrabold text-emerald-600 mt-1">{c.approved.toLocaleString()}</p>
                   </div>
-                  <div key="pending" className="bg-surface-container-lowest p-4 rounded-lg border border-outline-variant/10">
+                  <div className="bg-surface-container-lowest p-4 rounded-lg border border-outline-variant/10">
                     <p className="text-[10px] font-bold uppercase tracking-widest text-on-surface-variant">Pending</p>
                     <p className="text-2xl font-extrabold text-blue-600 mt-1">{c.pending.toLocaleString()}</p>
                   </div>
-                  <div key="rate" className="bg-surface-container-lowest p-4 rounded-lg border border-outline-variant/10">
+                  <div className="bg-surface-container-lowest p-4 rounded-lg border border-outline-variant/10">
                     <p className="text-[10px] font-bold uppercase tracking-widest text-on-surface-variant">Compliance Rate</p>
                     <p className={`text-2xl font-extrabold mt-1 ${c.complianceRate >= 70 ? 'text-emerald-600' : c.complianceRate >= 50 ? 'text-amber-600' : 'text-red-600'}`}>{c.complianceRate}%</p>
                   </div>
-                </>
-              ))}
+                </>;
+              })()}
             </div>
           )}
         </div>
