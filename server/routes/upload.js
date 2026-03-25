@@ -5,6 +5,7 @@ const fs = require('fs');
 const { pool, getClient, refreshViews, batchInsert } = require('../db');
 const { parseTimelog } = require('../etl/parse-timelog');
 const { parseAttendance } = require('../etl/parse-attendance');
+const { parseDemandCapacity } = require('../etl/parse-demand-capacity');
 
 const router = express.Router();
 
@@ -111,10 +112,10 @@ router.post('/timelog', upload.single('file'), async (req, res, next) => {
       [insertedCount, yearMonth, version, uploadId]
     );
 
-    // Refresh Materialized Views
-    await client.query('SELECT refresh_all_views()');
-
     await client.query('COMMIT');
+
+    // Refresh Materialized Views AFTER commit (CONCURRENTLY cannot run inside transaction)
+    try { await refreshViews(); } catch (e) { console.warn('MV refresh warning:', e.message); }
 
     // Cleanup temporary file
     fs.unlinkSync(req.file.path);
@@ -212,10 +213,10 @@ router.post('/attendance', upload.single('file'), async (req, res, next) => {
       [insertedCount, yearMonth, version, uploadId]
     );
 
-    // Refresh Materialized Views
-    await client.query('SELECT refresh_all_views()');
-
     await client.query('COMMIT');
+
+    // Refresh Materialized Views AFTER commit (CONCURRENTLY cannot run inside transaction)
+    try { await refreshViews(); } catch (e) { console.warn('MV refresh warning:', e.message); }
 
     // Cleanup temporary file
     fs.unlinkSync(req.file.path);
@@ -326,6 +327,65 @@ router.post('/:uploadId/restore', async (req, res, next) => {
     next(err);
   } finally {
     if (client) client.release();
+  }
+});
+
+/**
+ * Handle POST /api/upload/demand-capacity
+ * Uploads and replaces the Demand Capacity squad allocation data.
+ */
+router.post('/demand-capacity', upload.single('file'), async (req, res, next) => {
+  if (!req.file) {
+    return res.status(400).json({ error: 'No file uploaded.' });
+  }
+
+  const uploadId = 'dc_' + Date.now() + '_' + Math.random().toString(36).substring(2, 8);
+  const startTime = Date.now();
+
+  try {
+    // 1. Audit trail
+    await pool.query(
+      `INSERT INTO uploads (upload_id, file_type, file_name, file_size_bytes, year_month, status)
+       VALUES ($1, $2, $3, $4, $5, $6)`,
+      [uploadId, 'demand_capacity', req.file.originalname, req.file.size, 'all', 'processing']
+    );
+
+    // 2. Parse
+    const rows = parseDemandCapacity(req.file.path);
+    if (rows.length === 0) throw new Error('No valid rows found in the uploaded file.');
+
+    // 3. Replace all demand_capacity data
+    const client = await getClient();
+    try {
+      await client.query('BEGIN');
+      await client.query('DELETE FROM demand_capacity');
+
+      const columns = ['employee_id', 'resource_name', 'designation_name', 'client', 'project', 'billable_status', 'du_number', 'comment', 'location'];
+      const insertedCount = await batchInsert('demand_capacity', columns, rows, 500, client);
+
+      await client.query(
+        `UPDATE uploads SET status = 'success', row_count = $1, is_active = TRUE WHERE upload_id = $2`,
+        [insertedCount, uploadId]
+      );
+
+      await client.query('COMMIT');
+
+      // Refresh squad MV outside transaction
+      try { await pool.query('REFRESH MATERIALIZED VIEW CONCURRENTLY mv_squad_summary'); } catch (e) { console.warn('Squad MV refresh:', e.message); }
+
+      fs.unlinkSync(req.file.path);
+      res.json({ success: true, uploadId, rowCount: insertedCount, durationMs: Date.now() - startTime });
+    } catch (err) {
+      await client.query('ROLLBACK');
+      throw err;
+    } finally {
+      client.release();
+    }
+  } catch (error) {
+    console.error(`[Upload ${uploadId}] Error:`, error.message);
+    try { await pool.query(`UPDATE uploads SET status = 'failed', error_message = $1 WHERE upload_id = $2`, [error.message.substring(0, 500), uploadId]); } catch (e) { /* ignore */ }
+    if (fs.existsSync(req.file.path)) fs.unlinkSync(req.file.path);
+    next(error);
   }
 });
 

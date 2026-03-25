@@ -1,6 +1,7 @@
 const express = require('express');
 const { pool } = require('../db');
 const shared = require('./shared');
+const { SKYE_EXCLUSION } = require('./shared');
 const { entityToLocation } = require('../etl/entity-location');
 
 const router = express.Router();
@@ -12,14 +13,15 @@ router.use(shared);
 router.get('/daily', async (req, res, next) => {
   try {
     let query = `
-      SELECT date, 
-             SUM(hours) as total, 
+      SELECT date,
+             SUM(hours) as total,
              SUM(hours) FILTER (WHERE billable_status = 'Billable') as billable
       FROM timelog_raw
+      WHERE ${SKYE_EXCLUSION}
     `;
     let params = [];
     if (req.selectedMonths) {
-      query += ` WHERE year_month = ANY($1::text[])`;
+      query += ` AND year_month = ANY($1::text[])`;
       params.push(req.selectedMonths);
     }
     query += ` GROUP BY date ORDER BY date ASC`;
@@ -82,10 +84,10 @@ router.get('/departments', async (req, res, next) => {
  */
 router.get('/approval', async (req, res, next) => {
   try {
-    let query = `SELECT approval_status, SUM(hours) as hours FROM timelog_raw`;
+    let query = `SELECT approval_status, SUM(hours) as hours FROM timelog_raw WHERE ${SKYE_EXCLUSION}`;
     let params = [];
     if (req.selectedMonths) {
-      query += ` WHERE year_month = ANY($1::text[])`;
+      query += ` AND year_month = ANY($1::text[])`;
       params.push(req.selectedMonths);
     }
     query += ` GROUP BY approval_status`;

@@ -22,7 +22,7 @@ const C = {
 pres.layout = 'LAYOUT_WIDE'; // 13.33 x 7.5 inches
 pres.author = 'Tinubu PMO';
 pres.company = 'Tinubu Innoveo';
-pres.subject = 'PMO Intelligence Platform — Pitch Deck';
+pres.subject = 'PMO Intelligence Platform v3.0 — Pitch Deck';
 
 // ════════════════════════════════════════════════════════════════
 // SLIDE 1 — TITLE / HERO
@@ -56,14 +56,14 @@ s1.addText('Tinubu PMO', {
 });
 
 // Title
-s1.addText('PMO Intelligence\nPlatform', {
+s1.addText('PMO Intelligence\nPlatform v3.0', {
   x: 0.8, y: 2.0, w: 7, h: 2.2,
   fontSize: 52, bold: true, color: C.white, fontFace: 'Inter',
   lineSpacingMultiple: 0.9
 });
 
 // Subtitle
-s1.addText('Transform monthly Zoho exports into real-time\nworkforce analytics, compliance tracking, and predictive insights.', {
+s1.addText('Transform Zoho exports into real-time workforce analytics,\nsquad-based views, attendance grids, and compliance tracking.', {
   x: 0.8, y: 4.2, w: 6.5, h: 1.0,
   fontSize: 16, color: C.white, fontFace: 'Inter',
   transparency: 20, lineSpacingMultiple: 1.3
@@ -71,8 +71,8 @@ s1.addText('Transform monthly Zoho exports into real-time\nworkforce analytics, 
 
 // Bottom stats row
 const stats = [
-  { num: '18', label: 'Analytics Features' },
-  { num: '6', label: 'Legal Entities' },
+  { num: '30+', label: 'Analytics Features' },
+  { num: '19', label: 'Squad Projects' },
   { num: '9', label: 'Global Offices' },
   { num: '113', label: 'Employees Tracked' }
 ];
@@ -95,7 +95,6 @@ stats.forEach((s, i) => {
 const s2 = pres.addSlide();
 s2.background = { fill: C.white };
 
-// Section label
 s2.addText('THE CHALLENGE', {
   x: 0.8, y: 0.5, w: 4, h: 0.3,
   fontSize: 10, bold: true, color: C.primary, fontFace: 'Inter',
@@ -112,12 +111,11 @@ s2.addText('Every month, your team downloads Excel files from Zoho, manually cro
   fontSize: 14, color: C.subtle, fontFace: 'Inter', lineSpacingMultiple: 1.4
 });
 
-// Pain points
 const pains = [
   { icon: 'X', title: 'No Real-Time Visibility', desc: 'KPIs are stale the moment the report is emailed. Decisions are based on last month\'s data.' },
   { icon: 'X', title: 'Burnout Goes Undetected', desc: 'Employees logging 200+ hours are invisible until they submit medical leave or resign.' },
-  { icon: 'X', title: 'Multi-Entity Blindspot', desc: '6 legal entities across 9 locations — no single view of who is billing what, where.' },
-  { icon: 'X', title: 'Compliance is a Guessing Game', desc: '19% of timesheets are unapproved. Finance can\'t bill what isn\'t approved.' },
+  { icon: 'X', title: 'No Squad-Level View', desc: '19 project squads across 4 locations — no single view of who is allocated where.' },
+  { icon: 'X', title: 'Compliance is a Guessing Game', desc: 'Missed timesheets are invisible. Finance can\'t bill what isn\'t tracked.' },
   { icon: 'X', title: 'Zero Forecasting', desc: 'No capacity projection means sales commits delivery dates without data backing.' },
   { icon: 'X', title: 'Manual Effort', desc: 'PMO spends 2+ days/month building reports instead of acting on insights.' }
 ];
@@ -166,22 +164,22 @@ s3.addText('THE SOLUTION', {
   charSpacing: 4
 });
 
-s3.addText('Upload two files. Get everything.', {
+s3.addText('Upload three files. Get everything.', {
   x: 0.8, y: 0.9, w: 10, h: 0.7,
   fontSize: 36, bold: true, color: C.dark, fontFace: 'Inter'
 });
 
 // Flow diagram
 const flowSteps = [
-  { label: 'Zoho Export', sub: '2 Excel files\nper month', color: C.muted },
+  { label: 'Zoho Export', sub: '3 Excel files\n(Timelog, Attendance,\nDemand Capacity)', color: C.muted },
   { label: 'Drag & Drop', sub: 'Upload in\n2 seconds', color: C.secondary },
-  { label: 'Auto-ETL', sub: 'Parse, validate\n& store', color: C.primary },
-  { label: 'Live Dashboards', sub: '18 analytics\nfeatures', color: C.accent },
+  { label: 'Auto-ETL', sub: 'Parse, validate\nSkye exclusion', color: C.primary },
+  { label: 'Live Dashboards', sub: '30+ analytics\nDept/Squad toggle', color: C.accent },
 ];
 flowSteps.forEach((s, i) => {
   const xPos = 0.8 + i * 3.15;
   s3.addShape(pres.ShapeType.roundRect, {
-    x: xPos, y: 1.9, w: 2.6, h: 1.4, rectRadius: 0.12,
+    x: xPos, y: 1.9, w: 2.6, h: 1.5, rectRadius: 0.12,
     fill: { color: C.white },
     shadow: { type: 'outer', blur: 6, offset: 2, color: '000000', opacity: 0.08 }
   });
@@ -199,7 +197,7 @@ flowSteps.forEach((s, i) => {
     fontSize: 13, bold: true, color: C.dark, fontFace: 'Inter', align: 'center'
   });
   s3.addText(s.sub, {
-    x: xPos, y: 3.2, w: 2.6, h: 0.5,
+    x: xPos, y: 3.2, w: 2.6, h: 0.6,
     fontSize: 10, color: C.muted, fontFace: 'Inter', align: 'center', lineSpacingMultiple: 1.2
   });
   if (i < 3) {
@@ -212,21 +210,21 @@ flowSteps.forEach((s, i) => {
 
 // Feature grid
 const features = [
-  { title: 'Executive KPIs', desc: 'MoM trends with sparklines and color-coded thresholds', tag: 'OVERVIEW' },
-  { title: 'Resource Roster', desc: 'Multi-month per-employee grid with CSV export', tag: 'RESOURCES' },
-  { title: 'Compliance Funnel', desc: 'Approval rates tracked across periods', tag: 'UTILIZATION' },
-  { title: 'Dept Heatmap', desc: 'Cross-month utilization % by department', tag: 'UTILIZATION' },
-  { title: 'Entity Billing', desc: 'Billability comparison across 6 legal entities', tag: 'ANALYTICS' },
-  { title: 'PMO Alert Feed', desc: 'Auto-detect overload, bench, and compliance drops', tag: 'OVERVIEW' },
+  { title: 'Portfolio KPIs', desc: 'MoM trends, sparklines, Approval %, designation chart', tag: 'PORTFOLIO' },
+  { title: 'Squad Allocation', desc: 'Project-based squads with billable/non-billable split', tag: 'RESOURCES' },
+  { title: 'Attendance Grid', desc: 'Employee x day grid with color-coded status cells', tag: 'TIMESHEET' },
+  { title: 'Compliance Tracker', desc: 'Per-employee missed timesheet days report', tag: 'TIMESHEET' },
+  { title: 'Heatmap Roster', desc: 'Multi-month hours with 5-tier color scale', tag: 'RESOURCES' },
+  { title: 'PMO Alert Feed', desc: 'Auto-detect overload, bench, and compliance drops', tag: 'PORTFOLIO' },
   { title: 'Burnout Detection', desc: 'Flag employees >160h for consecutive months', tag: 'PREDICTIVE' },
-  { title: 'Capacity Forecast', desc: 'Linear projection of next month\'s hours', tag: 'PREDICTIVE' },
+  { title: 'Dept/Squad Toggle', desc: 'Global switch between department and squad views', tag: 'GLOBAL' },
 ];
 
 features.forEach((f, i) => {
   const col = i % 4;
   const row = Math.floor(i / 4);
   const xPos = 0.8 + col * 3.15;
-  const yPos = 4.2 + row * 1.6;
+  const yPos = 4.4 + row * 1.6;
 
   s3.addShape(pres.ShapeType.roundRect, {
     x: xPos, y: yPos, w: 2.8, h: 1.3, rectRadius: 0.1,
@@ -265,11 +263,10 @@ s4.addText('From data chaos to decision clarity.', {
   fontSize: 36, bold: true, color: C.dark, fontFace: 'Inter'
 });
 
-// Big impact metrics
 const impacts = [
   { num: '2s', label: 'Upload to Dashboard', sub: 'vs 2 days manual reporting' },
-  { num: '81%', label: 'Compliance Visibility', sub: 'Approval rates tracked in real-time' },
-  { num: '30+', label: 'API Endpoints', sub: 'Every data cut available instantly' },
+  { num: '19', label: 'Project Squads', sub: 'Full squad-level visibility' },
+  { num: '35+', label: 'API Endpoints', sub: 'Every data cut available instantly' },
   { num: '0', label: 'Excel Files to Open', sub: 'Self-service for every stakeholder' },
 ];
 
@@ -301,11 +298,11 @@ s4.addText('Who Benefits', {
 });
 
 const roles = [
-  { role: 'CXO / Leadership', benefit: 'One-glance executive summary with MoM trends' },
-  { role: 'PMO Director', benefit: 'Alert feed + heatmaps + compliance funnel' },
-  { role: 'Delivery Head', benefit: 'Resource utilization + burnout risk flags' },
-  { role: 'Finance', benefit: 'Entity billing + non-billable breakdown' },
-  { role: 'HR / People Ops', benefit: 'Attendance trends + leave patterns + manager scores' },
+  { role: 'CXO / Leadership', benefit: 'Portfolio summary with approval %, MoM trends, designation breakdown' },
+  { role: 'PMO Director', benefit: 'Alert feed + squad allocation + compliance tracker + heatmaps' },
+  { role: 'Delivery Head', benefit: 'Squad-based roster with heatmap + burnout risk flags' },
+  { role: 'Finance', benefit: 'Entity billing + Skye exclusion + non-billable breakdown' },
+  { role: 'HR / People Ops', benefit: 'Attendance grid + leave patterns + missed timesheet report' },
 ];
 
 roles.forEach((r, i) => {
@@ -331,7 +328,6 @@ roles.forEach((r, i) => {
 const s5 = pres.addSlide();
 s5.background = { fill: C.primary };
 
-// Decorative shapes
 s5.addShape(pres.ShapeType.ellipse, {
   x: 10, y: -2, w: 6, h: 6,
   fill: { color: C.secondary, transparency: 75 }
@@ -353,17 +349,16 @@ s5.addText('Built for today.\nReady for tomorrow.', {
   lineSpacingMultiple: 1.0
 });
 
-// Roadmap items
 const roadmap = [
-  { phase: 'DELIVERED', items: '18 analytics features \u2022 Upload versioning \u2022 Burnout detection \u2022 Leave forecast', color: C.accent },
-  { phase: 'NEXT', items: 'User authentication \u2022 Project profitability \u2022 Dark mode \u2022 Data exports', color: 'f59e0b' },
-  { phase: 'FUTURE', items: 'Skills matrix \u2022 Resource optimizer \u2022 Automated imports \u2022 AI insights', color: 'c084fc' },
+  { phase: 'DELIVERED', items: '30+ features \u2022 Squad allocation \u2022 Attendance grid \u2022 Compliance tracker \u2022 Skye exclusion \u2022 Dept/Squad toggle \u2022 Burnout detection', color: C.accent },
+  { phase: 'NEXT', items: 'User authentication \u2022 Project profitability \u2022 Dark mode \u2022 Data exports \u2022 SOW tracking', color: 'f59e0b' },
+  { phase: 'FUTURE', items: 'Skills matrix \u2022 Resource optimizer \u2022 Automated imports \u2022 AI-powered insights', color: 'c084fc' },
 ];
 
 roadmap.forEach((r, i) => {
   const yPos = 2.8 + i * 1.3;
   s5.addShape(pres.ShapeType.roundRect, {
-    x: 0.8, y: yPos, w: 8, h: 1.0, rectRadius: 0.1,
+    x: 0.8, y: yPos, w: 10, h: 1.0, rectRadius: 0.1,
     fill: { color: C.white, transparency: 88 }
   });
   s5.addShape(pres.ShapeType.roundRect, {
@@ -376,7 +371,7 @@ roadmap.forEach((r, i) => {
     align: 'center', valign: 'middle', charSpacing: 2
   });
   s5.addText(r.items, {
-    x: 2.4, y: yPos + 0.15, w: 6, h: 0.38,
+    x: 2.4, y: yPos + 0.15, w: 8, h: 0.38,
     fontSize: 11, color: C.white, fontFace: 'Inter', valign: 'middle'
   });
 });
@@ -392,7 +387,6 @@ s5.addText('Start your PMO transformation today \u2192', {
   align: 'center', valign: 'middle'
 });
 
-// Footer
 s5.addText('github.com/Ramachandran-U/tinubu-pmo', {
   x: 6, y: 6.35, w: 6, h: 0.35,
   fontSize: 11, color: C.white, fontFace: 'Inter',

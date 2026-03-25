@@ -1,6 +1,6 @@
 # Tinubu PMO Dashboard — Product Technical Document
 
-**Version:** 2.0
+**Version:** 3.0
 **Date:** March 2026
 **Classification:** Internal — Engineering
 
@@ -40,16 +40,18 @@ The **Tinubu PMO Dashboard** is an internal analytics and reporting command cent
 | Time-Logging Employees | 84 |
 | Reporting Managers | 23 |
 
-### Core Capabilities (v2.0 — 18 features across 3 phases)
+### Core Capabilities (v3.0 — 30 features across 3 phases + Sprint enhancements)
 
 | Category | Features |
 |---|---|
-| **Data Ingestion** | Drag-drop Excel upload, ETL parsing, upload versioning with audit trail |
-| **Executive Overview** | Temporal KPI cards with MoM trends + sparklines, PMO alert feed (overload/bench/spike/missing) |
-| **Resource Intelligence** | Multi-month roster with per-month columns, CSV export, per-employee utilization trend with status badges |
+| **Data Ingestion** | Drag-drop Excel upload (Timelog, Attendance, Demand Capacity), ETL parsing, upload versioning with audit trail |
+| **Portfolio (formerly Overview)** | Temporal KPI cards with MoM trends + sparklines, Approval % KPI, Designation-wise resource count bar chart, PMO alert feed, Pending Actions with real data breakdown |
+| **Resource Intelligence** | Squad allocation chart, Billable/Non-Billable by location bar chart, Multi-month roster with heatmap coloring, Squad filter, CSV export |
 | **Utilization Analytics** | Daily effort chart, compliance funnel, department heatmap (cross-month), attendance rate trend |
+| **Timesheet & Attendance** | Full attendance grid (employee x day) with color-coded status cells, Department/Squad grouping, Submission compliance report (per-employee missed days tracker) |
 | **Deep Analytics** | Entity billing, non-billable analysis, productivity index, dept ranking, manager scorecard, leave calendar heatmap, location comparison, capacity forecast |
 | **Predictive** | Burnout risk early warning (consecutive month detection), leave seasonality patterns |
+| **Data Quality** | Skye project exclusion (global), Department/Squad toggle (global) |
 
 ---
 
@@ -66,15 +68,15 @@ The **Tinubu PMO Dashboard** is an internal analytics and reporting command cent
 ┌────────────────────────▼────────────────────────────────────┐
 │                       EXPRESS SERVER                         │
 │  Node.js v22 · configurable port (default 3004)            │
-│  10 route modules · 30+ API endpoints                       │
+│  11 route modules · 35+ API endpoints                       │
 │  Middleware: multer · cors · error-handler · shared (months)│
 └────────────────────────┬────────────────────────────────────┘
                          │  pg (node-postgres)
 ┌────────────────────────▼────────────────────────────────────┐
 │                     POSTGRESQL 18                            │
 │  Local install on port 5433                                 │
-│  Tables: uploads · timelog_raw · attendance                 │
-│  Materialized Views: 5 MVs refreshed per upload             │
+│  Tables: uploads · timelog_raw · attendance · demand_capacity│
+│  Materialized Views: 6 MVs refreshed per upload             │
 │  Upload Versioning: version, is_active, uploaded_by columns │
 └─────────────────────────────────────────────────────────────┘
 ```
@@ -239,6 +241,24 @@ One row per employee per day from Zoho Muster Roll export.
 **Unique constraint:** `(year_month, date, employee_id)`
 **Indexes:** `year_month`, `employee_id`, `upload_id`
 
+#### `demand_capacity` (9 columns)
+
+Squad allocation data from Demand Capacity Excel. One row per employee.
+
+| Column | Type | Description |
+|---|---|---|
+| `employee_id` | TEXT UNIQUE | Zoho employee ID |
+| `resource_name` | TEXT | Full name |
+| `designation_name` | TEXT | Job title/designation |
+| `client` | TEXT | Assigned client |
+| `project` | TEXT | **Squad identifier** (Everest, Rebranding, Mejoras, etc.) |
+| `billable_status` | TEXT | Billable / Investment / Loaned |
+| `du_number` | TEXT | Delivery Unit (DU1, DU3, SolEng) |
+| `comment` | TEXT | Additional notes |
+| `location` | TEXT | India, Hungary, HongKong, Spain |
+
+**Indexes:** `du_number`, `location`, `designation_name`
+
 ### Materialized Views
 
 | View | Purpose | Key Columns |
@@ -248,8 +268,11 @@ One row per employee per day from Zoho Muster Roll export.
 | `mv_client_hours` | Per-client monthly hours | year_month, client_name, total_hours, billable_hours, headcount, project_count |
 | `mv_dept_hours` | Per-department monthly hours | year_month, department, total_hours, billable_hours, headcount |
 | `mv_attendance_summary` | Per-employee monthly attendance | year_month, employee_id, present_days, absent_days, weekend_days, holiday_days, leave_days |
+| `mv_squad_summary` | Squad allocation summary | squad, location, total_resources, billable_count, non_billable_count, designations |
 
 All views are refreshed via `SELECT refresh_all_views()` after each successful upload.
+
+**Skye Project Exclusion:** MVs `mv_resource_summary`, `mv_kpis_monthly`, `mv_client_hours`, and `mv_dept_hours` include a WHERE clause excluding rows where `project_name` or `client_name` contains "Skye" (case-insensitive). This is also applied to all raw `timelog_raw` queries via the `SKYE_EXCLUSION` constant in `shared.js`.
 
 ---
 
@@ -272,6 +295,7 @@ All views are refreshed via `SELECT refresh_all_views()` after each successful u
 |---|---|---|
 | `POST` | `/upload/timelog` | Upload Zoho Time Log Excel |
 | `POST` | `/upload/attendance` | Upload Zoho Attendance Excel |
+| `POST` | `/upload/demand-capacity` | Upload Demand Capacity Excel (squad mapping) |
 | `GET` | `/upload/history` | Version history for uploads |
 | `POST` | `/upload/:uploadId/restore` | Restore a previous upload version (audit only) |
 
@@ -316,6 +340,18 @@ All views are refreshed via `SELECT refresh_all_views()` after each successful u
 | `GET` | `/analytics/location-utilization` | Location-level comparison |
 | `GET` | `/analytics/burnout-risk` | Burnout risk detection |
 | `GET` | `/analytics/leave-forecast` | Leave seasonality patterns |
+| `GET` | `/analytics/timesheet-compliance` | Per-employee missed timesheet days |
+
+### Squad Endpoints
+
+| Method | Endpoint | Description |
+|---|---|---|
+| `GET` | `/squads` | Squad summary by location |
+| `GET` | `/squads/list` | Distinct squad (project) names |
+| `GET` | `/squads/designations` | Designation-wise resource count |
+| `GET` | `/squads/billable-by-location` | Billable vs non-billable by location |
+| `GET` | `/squads/allocation` | Squad allocation with hours (month-filtered) |
+| `GET` | `/squads/employee-mapping` | Employee ID to squad mapping |
 
 ---
 
@@ -342,24 +378,24 @@ client/src/
 ├── charts/
 │   └── chart-config.js      # Chart.js registration, palette, defaults
 └── pages/
-    ├── Overview.jsx          # Executive Summary + PMO Alerts
-    ├── Resources.jsx         # Multi-month roster + charts + CSV export
+    ├── Overview.jsx          # Portfolio: Executive Summary + Designation chart + Approval % + PMO Alerts
+    ├── Resources.jsx         # Squad allocation + Billable/Location + Heatmap roster + Squad filter
     ├── Utilization.jsx       # Daily effort, compliance, dept heatmap, attendance
     ├── Analytics.jsx         # 11 sub-sections (entity, employee, non-billable, etc.)
-    └── Timesheet.jsx         # Upload zones + active versions + attendance table
+    └── Timesheet.jsx         # Attendance Grid + Submission Compliance + Upload zones
 ```
 
 ### Active Tabs
 
 | Tab | Page Component | Sub-sections |
 |---|---|---|
-| Overview | Overview.jsx | Alert feed, 5 temporal KPI cards, client chart, approval chart, top resources, approval breakdown |
-| Resources | Resources.jsx | KPI cards, department chart, location doughnut, filters, multi-month roster with CSV export |
+| Portfolio | Overview.jsx | Alert feed, 6 temporal KPI cards (incl. Approval %), Designation-wise bar chart, approval doughnut, top resources, pending actions with real data |
+| Resources | Resources.jsx | Squad allocation chart, Billable/Non-Billable by location, Squad filter, heatmap roster with CSV export |
 | Utilization | Utilization.jsx | Daily Effort, Compliance Funnel, Dept Heatmap, Attendance Trend |
 | Analytics | Analytics.jsx | Entity Billing, Employee Trend, Non-Billable, Productivity, Dept Ranking, Manager Score, Leave Calendar, Locations, Forecast, Burnout Risk, Leave Patterns |
-| Timesheet | Timesheet.jsx | Upload zones (timelog + attendance), active data versions, attendance muster roll |
-| Portfolio | Placeholder | Coming Soon |
-| Finance | *(removed in v2)* | — |
+| Timesheet | Timesheet.jsx | Attendance Grid (employee x day, color-coded), Submission Compliance (per-employee missed days), Upload zones (timelog + attendance + demand capacity) |
+| Reports | Placeholder | Coming Soon |
+| Finance | Placeholder | Coming Soon |
 | AMM | Placeholder | Coming Soon |
 
 ### State Management
@@ -370,6 +406,8 @@ Global state via `DataContext`:
 - `kpis` — aggregate KPI values for selected months
 - `loadingInitial` / `isRefreshing` — loading states
 - `refetchAll()` — full refresh trigger (called after uploads)
+- `groupBy` — `'dept'` or `'squad'` — global toggle for Department vs Squad view
+- `squadMap` — employee_id to squad (project) mapping from demand_capacity
 
 Each page manages its own local state and fetches data independently.
 
@@ -393,6 +431,13 @@ Each page manages its own local state and fetches data independently.
 - Date columns start from index 10 (hardcoded)
 - Only imports rows where `employeeId.startsWith('INN-')` (hardcoded filter)
 - Unpivots wide format to one row per employee per date
+
+### `parse-demand-capacity.js`
+
+- Reads first worksheet via SheetJS
+- Maps columns: Employee ID, Resource name, Designation Name, Client, Project, Billable / Investment, DU#, Comment, Location
+- Normalizes billable status (maps 'DU1', 'DU3', 'SHS Team', 'NA' to 'Investment')
+- Returns array of employee objects with squad = Project column
 
 ### `entity-location.js`
 
@@ -434,6 +479,28 @@ Each page manages its own local state and fetches data independently.
 |---|---|---|
 | Burnout Risk | `/analytics/burnout-risk` | 4-tier risk register (critical/high/elevated/watch) with trend bars |
 | Leave Forecast | `/analytics/leave-forecast` | Day-of-week patterns, week-of-month, monthly trend, top leave takers |
+
+### Sprint Enhancements (12 features)
+
+| Feature | Backend | Frontend |
+|---|---|---|
+| Designation Bar Chart | `/squads/designations` | Horizontal bar chart on Portfolio tab replacing Client Allocation |
+| Approval % KPI | Computed from `/charts/approval` | Always-visible KPI card with color-coded % and progress bar |
+| Skye Exclusion | WHERE clauses in all MVs + raw queries | Info badge on Portfolio: "Excluding Skye projects" |
+| Pending Actions Fix | Approval status breakdown | Real data: pending hours, not submitted hours, draft hours |
+| Remove Leading Department | N/A | KPI card removed from Resources |
+| Billable/Non-Billable by Location | `/squads/billable-by-location` | Stacked horizontal bar chart on Resources |
+| Squad Allocation | `/squads/allocation` | Stacked bar chart replacing Department Allocation |
+| Roster Heatmap | N/A | 5-tier color scale (blue→orange→red) on month cells |
+| Squad Filter | `/squads/list` | Dropdown replacing Department filter on Resources |
+| Utilization Fix | Promise.allSettled resilience | useMemo hooks before early return (Rules of Hooks fix) |
+| Attendance Grid | `/attendance` (existing) | Full employee x day grid with color-coded cells, legend, dept grouping |
+| Timesheet Compliance | `/analytics/timesheet-compliance` | Per-employee missed days table with compliance % |
+| Demand Capacity Upload | `/upload/demand-capacity` + ETL | Third upload zone on Timesheet tab |
+| Dept/Squad Toggle | `/squads/employee-mapping` | Global toggle in header, affects Resources, Timesheet, Compliance |
+| Tab Rename | N/A | Overview → Portfolio |
+| Squad = Project | All squad queries use `project` column | Squad names: Everest, Rebranding, Mejoras, SolEng, etc. |
+| MV Refresh Bug Fix | Refresh moved outside transaction | Both timelog and attendance uploads |
 
 ### Also Included
 
@@ -541,7 +608,7 @@ node server/migrate.js
 |---|---|
 | No authentication | Requires network-level protection |
 | CORS open | Allows all origins (security risk) |
-| MV refresh in transaction | `REFRESH CONCURRENTLY` inside txn block may fail in PG |
+| ~~MV refresh in transaction~~ | **FIXED** — Refresh moved outside transaction in both upload routes |
 | No file type validation | Server accepts any file type via curl |
 | Restore is audit-only | Data rows are not actually restored |
 | Hardcoded 160h | FTE capacity assumed as 160h/month in 5 query locations |
@@ -564,4 +631,4 @@ See `Phase4_Enhancement_Plan.md` for the full plan. Summary:
 ---
 
 *Document maintained by: Tinubu PMO Engineering Team*
-*Last updated: March 25, 2026 — v2.0 (Phase 1-3 complete)*
+*Last updated: March 26, 2026 — v3.0 (Phase 1-3 + Sprint Enhancements complete)*

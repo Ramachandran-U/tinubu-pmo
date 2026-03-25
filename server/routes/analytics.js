@@ -1,6 +1,7 @@
 const express = require('express');
 const { pool } = require('../db');
 const shared = require('./shared');
+const { SKYE_EXCLUSION } = require('./shared');
 
 const router = express.Router();
 router.use(shared);
@@ -38,7 +39,8 @@ router.get('/kpi-trends', async (req, res, next) => {
              COUNT(DISTINCT client_name) AS "uniqueClients",
              COUNT(DISTINCT project_name) AS "uniqueProjects"
       FROM timelog_raw
-      ${monthsClause}
+      WHERE ${SKYE_EXCLUSION}
+      ${monthsClause ? monthsClause.replace('WHERE', 'AND') : ''}
       GROUP BY year_month
       ORDER BY year_month
     `, params);
@@ -116,7 +118,8 @@ router.get('/compliance', async (req, res, next) => {
         SUM(hours) AS total_hours,
         SUM(hours) FILTER (WHERE approval_status = 'Approved') AS approved_hours
       FROM timelog_raw
-      ${clause}
+      WHERE ${SKYE_EXCLUSION}
+      ${clause ? clause.replace('WHERE', 'AND') : ''}
       GROUP BY year_month
       ORDER BY year_month
     `, params);
@@ -138,6 +141,66 @@ router.get('/compliance', async (req, res, next) => {
   } catch (err) {
     next(err);
   }
+});
+
+/**
+ * GET /api/analytics/timesheet-compliance?months=...
+ * Per-employee timesheet submission compliance: present days vs days with hours logged.
+ */
+router.get('/timesheet-compliance', async (req, res, next) => {
+  try {
+    const { selectedMonths } = req;
+    let params = [];
+    let monthFilter = '';
+    if (selectedMonths) {
+      params.push(selectedMonths);
+      monthFilter = 'AND year_month = ANY($1::text[])';
+    }
+
+    const result = await pool.query(`
+      WITH working_days AS (
+        SELECT employee_id,
+               MAX(employee_name) AS name,
+               MAX(department) AS department,
+               SUM(present_days) AS total_working_days
+        FROM mv_attendance_summary
+        WHERE 1=1 ${monthFilter}
+        GROUP BY employee_id
+      ),
+      logged_days AS (
+        SELECT employee_id,
+               COUNT(DISTINCT date) AS days_logged
+        FROM timelog_raw
+        WHERE hours > 0 AND ${SKYE_EXCLUSION} ${monthFilter}
+        GROUP BY employee_id
+      )
+      SELECT
+        wd.employee_id,
+        wd.name,
+        wd.department,
+        COALESCE(dc.project, '') AS squad,
+        wd.total_working_days,
+        COALESCE(ld.days_logged, 0) AS days_logged,
+        GREATEST(wd.total_working_days - COALESCE(ld.days_logged, 0), 0) AS missed_days,
+        LEAST(ROUND(100.0 * COALESCE(ld.days_logged, 0) / wd.total_working_days, 1), 100) AS compliance_pct
+      FROM working_days wd
+      LEFT JOIN logged_days ld USING (employee_id)
+      LEFT JOIN demand_capacity dc USING (employee_id)
+      WHERE wd.total_working_days > 0
+      ORDER BY compliance_pct ASC, missed_days DESC
+    `, params);
+
+    res.json(result.rows.map(r => ({
+      employeeId: r.employee_id,
+      name: r.name,
+      department: r.department,
+      squad: r.squad,
+      totalWorkingDays: Number(r.total_working_days),
+      daysLogged: Number(r.days_logged),
+      missedDays: Number(r.missed_days),
+      compliancePct: Number(r.compliance_pct)
+    })));
+  } catch (err) { next(err); }
 });
 
 /**
@@ -511,7 +574,7 @@ router.get('/manager-scorecard', async (req, res, next) => {
 router.get('/non-billable', async (req, res, next) => {
   try {
     const { selectedMonths } = req;
-    let clause = "WHERE billable_status != 'Billable'";
+    let clause = `WHERE billable_status != 'Billable' AND ${SKYE_EXCLUSION}`;
     let params = [];
     if (selectedMonths) {
       clause += ` AND year_month = ANY($1::text[])`;

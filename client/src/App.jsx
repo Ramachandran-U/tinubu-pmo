@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react'
+import { useData } from './context/DataContext'
 import MonthPicker from './components/MonthPicker'
 import Overview from './pages/Overview'
 import Resources from './pages/Resources'
@@ -7,12 +8,12 @@ import Timesheet from './pages/Timesheet'
 import Analytics from './pages/Analytics'
 
 const TABS = [
-  { id: 'overview',    label: 'Overview',     icon: 'dashboard', active: true },
+  { id: 'overview',    label: 'Portfolio',    icon: 'dashboard', active: true },
   { id: 'resources',   label: 'Resources',    icon: 'group', active: true },
   { id: 'utilization', label: 'Utilization',  icon: 'speed', active: true },
   { id: 'analytics',   label: 'Analytics',    icon: 'insights', active: true },
   { id: 'timesheet',   label: 'Timesheet',    icon: 'schedule', active: true },
-  { id: 'portfolio',   label: 'Portfolio',    icon: 'folder_special', active: false },
+  { id: 'reports',     label: 'Reports',      icon: 'folder_special', active: false },
   { id: 'finance',     label: 'Finance',      icon: 'payments', active: false },
   { id: 'amm',         label: 'AMM',          icon: 'analytics', active: false },
 ]
@@ -65,6 +66,7 @@ function TabContent({ tabId }) {
 }
 
 export default function App() {
+  const { groupBy, setGroupBy } = useData()
   const [activeTab, setActiveTab] = useState('overview')
 
   // Sidebar collapse state — persisted in localStorage
@@ -183,6 +185,24 @@ export default function App() {
             </div>
             <div className="flex items-center">
               <MonthPicker lightTheme={true} />
+            </div>
+            <div className="flex items-center bg-slate-200/50 rounded-full p-0.5">
+              <button
+                onClick={() => setGroupBy('dept')}
+                className={`px-3 py-1 text-[10px] font-bold uppercase tracking-wider rounded-full transition-all ${
+                  groupBy === 'dept' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-700'
+                }`}
+              >
+                Department
+              </button>
+              <button
+                onClick={() => setGroupBy('squad')}
+                className={`px-3 py-1 text-[10px] font-bold uppercase tracking-wider rounded-full transition-all ${
+                  groupBy === 'squad' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-700'
+                }`}
+              >
+                Squad
+              </button>
             </div>
           </div>
 

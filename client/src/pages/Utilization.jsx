@@ -17,7 +17,7 @@ const getHeatmapColor = (pct) => {
 };
 
 export default function Utilization() {
-  const { loadingInitial, isRefreshing, selectedMonths, availableMonths } = useData();
+  const { loadingInitial, isRefreshing, selectedMonths, availableMonths, groupBy } = useData();
   const { req } = useApi();
 
   const [heatmap, setHeatmap] = useState([]);
@@ -33,19 +33,20 @@ export default function Utilization() {
       if (loadingInitial) return;
       setLoading(true);
       const qs = selectedMonths.length > 0 ? `?months=${selectedMonths.join(',')}` : '';
-      const allQs = availableMonths.length > 0 ? `?months=${availableMonths.join(',')}` : qs;
+      // Use selected months for all queries (not all available months)
+      // to avoid overloading the DB with huge time ranges
+      const analyticsQs = qs || (availableMonths.length > 0 ? `?months=${availableMonths.join(',')}` : '');
 
       try {
-        // Use Promise.allSettled so one failed endpoint doesn't kill the rest
         const [heatRes, logsRes, compRes, deptRes, attRes] = await Promise.allSettled([
           req(`/heatmap${qs}`),
           req(`/timelog${qs}${qs ? '&' : '?'}pageSize=200`),
-          req(`/analytics/compliance${allQs}`),
-          req(`/analytics/dept-heatmap${allQs}`),
-          req(`/analytics/attendance-trend${allQs}`)
+          req(`/analytics/compliance${analyticsQs}`),
+          req(`/analytics/dept-heatmap${analyticsQs}`),
+          req(`/analytics/attendance-trend${analyticsQs}`)
         ]);
         setHeatmap(heatRes.status === 'fulfilled' ? (heatRes.value || []) : []);
-        setTimelogs(logsRes.status === 'fulfilled' ? (logsRes.value?.rows || []) : []);
+        setTimelogs(logsRes.status === 'fulfilled' ? (logsRes.value?.rows || logsRes.value || []) : []);
         setCompliance(compRes.status === 'fulfilled' ? (compRes.value || []) : []);
         setDeptHeatmap(deptRes.status === 'fulfilled' ? (deptRes.value || []) : []);
         setAttendanceTrend(attRes.status === 'fulfilled' ? (attRes.value || []) : []);
@@ -58,58 +59,7 @@ export default function Utilization() {
     fetchData();
   }, [selectedMonths, loadingInitial, req, availableMonths]);
 
-  if (loadingInitial || (loading && !isRefreshing && heatmap.length === 0)) {
-    return (
-      <div className="flex flex-col items-center justify-center p-16 h-full text-on-surface-variant">
-        <span className="material-symbols-outlined animate-spin text-3xl mb-4">sync</span>
-        <p>Analyzing utilization data...</p>
-      </div>
-    );
-  }
-
-  const fmtHr = (n) => (n || 0).toLocaleString(undefined, { maximumFractionDigits: 1 });
-
-  // --- Daily Effort Chart ---
-  const heatChartData = {
-    labels: heatmap.map(d => d.dateStr.substring(5)),
-    datasets: [
-      { label: 'Billable Hours', data: heatmap.map(d => d.billableHours), backgroundColor: chartColors.emerald, stack: 'Stack 0' },
-      { label: 'Non-Billable Hours', data: heatmap.map(d => d.nonBillableHours), backgroundColor: chartColors.slate, stack: 'Stack 0' }
-    ]
-  };
-  const heatOptions = {
-    ...commonOptions,
-    interaction: { mode: 'index', intersect: false },
-    scales: {
-      x: { stacked: true, grid: { display: false, drawBorder: false }, ticks: { font: { size: 9 } } },
-      y: { stacked: true, grid: { color: chartColors.gridLines, drawBorder: false } }
-    }
-  };
-
-  // --- Compliance Funnel ---
-  const complianceChartData = {
-    labels: compliance.map(c => c.yearMonth),
-    datasets: [
-      { label: 'Approved', data: compliance.map(c => c.approved), backgroundColor: chartColors.primary },
-      { label: 'Submitted (not approved)', data: compliance.map(c => c.submitted - c.approved), backgroundColor: '#acbfff' },
-      { label: 'Not Submitted', data: compliance.map(c => c.notSubmitted), backgroundColor: chartColors.error },
-    ]
-  };
-  const complianceLineData = {
-    labels: compliance.map(c => c.yearMonth),
-    datasets: [{
-      label: 'Compliance Rate %',
-      data: compliance.map(c => c.complianceRate),
-      borderColor: chartColors.primary,
-      backgroundColor: chartColors.primaryLight,
-      fill: true,
-      tension: 0.3,
-      pointRadius: 4,
-      pointBackgroundColor: chartColors.primary
-    }]
-  };
-
-  // --- Department Heatmap ---
+  // All useMemo hooks MUST be before any early returns (Rules of Hooks)
   const { heatmapDepts, heatmapMonths, heatmapGrid } = useMemo(() => {
     const months = [...new Set(deptHeatmap.map(d => d.yearMonth))].sort();
     const depts = [...new Set(deptHeatmap.map(d => d.department))].sort();
@@ -144,6 +94,57 @@ export default function Utilization() {
     }));
     return { attTrendMonths: months, attTrendDepts: topDepts, attTrendLines: lines };
   }, [attendanceTrend]);
+
+  if (loadingInitial || (loading && !isRefreshing && heatmap.length === 0)) {
+    return (
+      <div className="flex flex-col items-center justify-center p-16 h-full text-on-surface-variant">
+        <span className="material-symbols-outlined animate-spin text-3xl mb-4">sync</span>
+        <p>Analyzing utilization data...</p>
+      </div>
+    );
+  }
+
+  const fmtHr = (n) => (n || 0).toLocaleString(undefined, { maximumFractionDigits: 1 });
+
+  // --- Daily Effort Chart ---
+  const heatChartData = {
+    labels: heatmap.map(d => d.dateStr.substring(5)),
+    datasets: [
+      { label: 'Billable Hours', data: heatmap.map(d => d.billableHours), backgroundColor: chartColors.emerald, stack: 'Stack 0' },
+      { label: 'Non-Billable Hours', data: heatmap.map(d => d.nonBillableHours), backgroundColor: chartColors.slate, stack: 'Stack 0' }
+    ]
+  };
+  const heatOptions = {
+    ...commonOptions,
+    interaction: { mode: 'index', intersect: false },
+    scales: {
+      x: { stacked: true, grid: { display: false, drawBorder: false }, ticks: { font: { size: 9 } } },
+      y: { stacked: true, grid: { color: chartColors.gridLines, drawBorder: false } }
+    }
+  };
+
+  // --- Compliance Funnel ---
+  const complianceChartData = {
+    labels: compliance.map(c => c.yearMonth),
+    datasets: [
+      { label: 'Approved', data: compliance.map(c => c.approved), backgroundColor: chartColors.primary },
+      { label: 'Submitted (not approved)', data: compliance.map(c => (c.submitted || 0) - c.approved), backgroundColor: '#acbfff' },
+      { label: 'Not Submitted', data: compliance.map(c => c.notSubmitted), backgroundColor: chartColors.error },
+    ]
+  };
+  const complianceLineData = {
+    labels: compliance.map(c => c.yearMonth),
+    datasets: [{
+      label: 'Compliance Rate %',
+      data: compliance.map(c => c.complianceRate),
+      borderColor: chartColors.primary,
+      backgroundColor: chartColors.primaryLight,
+      fill: true,
+      tension: 0.3,
+      pointRadius: 4,
+      pointBackgroundColor: chartColors.primary
+    }]
+  };
 
   const attTrendChartData = {
     labels: attTrendMonths,

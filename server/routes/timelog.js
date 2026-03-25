@@ -1,6 +1,7 @@
 const express = require('express');
 const { pool } = require('../db');
 const shared = require('./shared');
+const { SKYE_EXCLUSION } = require('./shared');
 
 const router = express.Router();
 router.use(shared);
@@ -16,7 +17,7 @@ router.get('/', async (req, res, next) => {
     const pageSize = parseInt(req.query.pageSize) || 50;
     const offset = (page - 1) * pageSize;
     
-    let whereClause = '1=1';
+    let whereClause = SKYE_EXCLUSION;
     let params = [];
     let paramCounter = 1;
 

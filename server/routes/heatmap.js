@@ -1,6 +1,7 @@
 const express = require('express');
 const { pool } = require('../db');
 const shared = require('./shared');
+const { SKYE_EXCLUSION } = require('./shared');
 
 const router = express.Router();
 router.use(shared);
@@ -20,11 +21,12 @@ router.get('/', async (req, res, next) => {
         SUM(CASE WHEN billable_status = 'Billable' THEN hours ELSE 0 END) as billable_hours,
         SUM(CASE WHEN billable_status != 'Billable' THEN hours ELSE 0 END) as non_billable_hours
       FROM timelog_raw
+      WHERE ${SKYE_EXCLUSION}
     `;
-    
+
     let params = [];
     if (selectedMonths) {
-      query += ` WHERE year_month = ANY($1::text[])`;
+      query += ` AND year_month = ANY($1::text[])`;
       params.push(selectedMonths);
     }
     

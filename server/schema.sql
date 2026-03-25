@@ -102,6 +102,7 @@ BEGIN
           COUNT(DISTINCT client_name)                                   AS unique_clients,
           COUNT(DISTINCT project_name)                                  AS unique_projects
       FROM timelog_raw
+      WHERE LOWER(COALESCE(project_name,'''')) NOT LIKE ''%skye%'' AND LOWER(COALESCE(client_name,'''')) NOT LIKE ''%skye%''
       GROUP BY employee_id, year_month
     ';
     CREATE UNIQUE INDEX ON mv_resource_summary (employee_id, year_month);
@@ -125,6 +126,7 @@ BEGIN
           COUNT(DISTINCT client_name)                                   AS unique_clients,
           COUNT(DISTINCT project_name)                                  AS unique_projects
       FROM timelog_raw
+      WHERE LOWER(COALESCE(project_name,'''')) NOT LIKE ''%skye%'' AND LOWER(COALESCE(client_name,'''')) NOT LIKE ''%skye%''
       GROUP BY year_month
     ';
     CREATE UNIQUE INDEX ON mv_kpis_monthly (year_month);
@@ -147,6 +149,7 @@ BEGIN
           COUNT(DISTINCT employee_id) AS headcount,
           COUNT(DISTINCT project_name) AS project_count
       FROM timelog_raw
+      WHERE LOWER(COALESCE(project_name,'''')) NOT LIKE ''%skye%'' AND LOWER(COALESCE(client_name,'''')) NOT LIKE ''%skye%''
       GROUP BY year_month, client_name
     ';
     CREATE UNIQUE INDEX ON mv_client_hours (year_month, client_name);
@@ -168,6 +171,7 @@ BEGIN
           SUM(hours) FILTER (WHERE billable_status = ''Billable'') AS billable_hours,
           COUNT(DISTINCT employee_id) AS headcount
       FROM timelog_raw
+      WHERE LOWER(COALESCE(project_name,'''')) NOT LIKE ''%skye%'' AND LOWER(COALESCE(client_name,'''')) NOT LIKE ''%skye%''
       GROUP BY year_month, department
     ';
     CREATE UNIQUE INDEX ON mv_dept_hours (year_month, department);
@@ -201,6 +205,48 @@ BEGIN
 END $$;
 
 
+-- ━━━ Demand Capacity (squad allocation from Excel) ━━━
+CREATE TABLE IF NOT EXISTS demand_capacity (
+    id              SERIAL PRIMARY KEY,
+    employee_id     TEXT NOT NULL,
+    resource_name   TEXT,
+    designation_name TEXT,
+    client          TEXT,
+    project         TEXT,
+    billable_status TEXT,
+    du_number       TEXT,
+    comment         TEXT,
+    location        TEXT,
+    created_at      TIMESTAMPTZ DEFAULT NOW(),
+    UNIQUE(employee_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_dc_du ON demand_capacity(du_number);
+CREATE INDEX IF NOT EXISTS idx_dc_location ON demand_capacity(location);
+CREATE INDEX IF NOT EXISTS idx_dc_designation ON demand_capacity(designation_name);
+
+-- ━━━ Squad summary materialized view ━━━
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT FROM pg_matviews WHERE matviewname = 'mv_squad_summary'
+  ) THEN
+    EXECUTE '
+      CREATE MATERIALIZED VIEW mv_squad_summary AS
+      SELECT
+          dc.du_number AS squad,
+          dc.location,
+          COUNT(DISTINCT dc.employee_id) AS total_resources,
+          COUNT(DISTINCT dc.employee_id) FILTER (WHERE dc.billable_status = ''Billable'') AS billable_count,
+          COUNT(DISTINCT dc.employee_id) FILTER (WHERE dc.billable_status IN (''Investment'', ''Loaned'', ''Bench'')) AS non_billable_count,
+          string_agg(DISTINCT dc.designation_name, '', '' ORDER BY dc.designation_name) AS designations
+      FROM demand_capacity dc
+      GROUP BY dc.du_number, dc.location
+    ';
+    CREATE UNIQUE INDEX ON mv_squad_summary(squad, location);
+  END IF;
+END $$;
+
 -- ============================================================
 -- Refresh function (called after each upload)
 -- ============================================================
@@ -212,5 +258,9 @@ BEGIN
     REFRESH MATERIALIZED VIEW CONCURRENTLY mv_client_hours;
     REFRESH MATERIALIZED VIEW CONCURRENTLY mv_dept_hours;
     REFRESH MATERIALIZED VIEW CONCURRENTLY mv_attendance_summary;
+    -- Only refresh squad summary if the view exists
+    IF EXISTS (SELECT FROM pg_matviews WHERE matviewname = 'mv_squad_summary') THEN
+        REFRESH MATERIALIZED VIEW CONCURRENTLY mv_squad_summary;
+    END IF;
 END;
 $$ LANGUAGE plpgsql;

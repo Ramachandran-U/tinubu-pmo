@@ -10,15 +10,23 @@ export function DataProvider({ children }) {
   const [kpis, setKpis] = useState(null);
   const [loadingInitial, setLoadingInitial] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
+  // Global toggle: 'dept' or 'squad'
+  const [groupBy, setGroupBy] = useState('squad');
+  // Employee ID -> Squad mapping from demand_capacity
+  const [squadMap, setSquadMap] = useState({});
 
   // Initial load of available months
   useEffect(() => {
     async function init() {
       try {
-        const { months } = await req('/months');
-        setAvailableMonths(months || []);
-        if (months && months.length > 0) {
-          // Default to latest month
+        const [monthsRes, mapRes] = await Promise.all([
+          req('/months'),
+          req('/squads/employee-mapping').catch(() => ({}))
+        ]);
+        const months = monthsRes?.months || [];
+        setAvailableMonths(months);
+        setSquadMap(mapRes || {});
+        if (months.length > 0) {
           setSelectedMonths([months[0]]);
         }
       } catch (err) {
@@ -71,7 +79,10 @@ export function DataProvider({ children }) {
     kpis,
     loadingInitial,
     isRefreshing,
-    refetchAll
+    refetchAll,
+    groupBy,
+    setGroupBy,
+    squadMap
   };
 
   return <DataContext.Provider value={value}>{children}</DataContext.Provider>;

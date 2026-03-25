@@ -19,4 +19,8 @@ router.use((req, res, next) => {
   next();
 });
 
+// Skye exclusion clause for raw timelog queries
+const SKYE_EXCLUSION = "LOWER(COALESCE(project_name,'')) NOT LIKE '%skye%' AND LOWER(COALESCE(client_name,'')) NOT LIKE '%skye%'";
+
 module.exports = router;
+module.exports.SKYE_EXCLUSION = SKYE_EXCLUSION;

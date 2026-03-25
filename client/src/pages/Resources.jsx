@@ -3,21 +3,33 @@ import { useData } from '../context/DataContext';
 import { useApi } from '../hooks/useApi';
 import KpiCard from '../components/KpiCard';
 import ChartCard from '../components/ChartCard';
-import { chartColors, commonOptions, donutOptions } from '../charts/chart-config';
-import { Bar, Doughnut } from 'react-chartjs-2';
+import { chartColors, commonOptions } from '../charts/chart-config';
+import { Bar } from 'react-chartjs-2';
+
+// Heatmap color for hours-based cells
+const getHoursColor = (hours) => {
+  if (hours >= 200) return 'bg-red-500 text-white';
+  if (hours >= 161) return 'bg-orange-400 text-white';
+  if (hours >= 121) return 'bg-blue-600 text-white';
+  if (hours >= 81)  return 'bg-blue-400 text-white';
+  if (hours >= 1)   return 'bg-blue-100 text-blue-900';
+  return '';
+};
 
 export default function Resources() {
-  const { loadingInitial, isRefreshing, selectedMonths } = useData();
+  const { loadingInitial, isRefreshing, selectedMonths, groupBy, squadMap } = useData();
   const { req } = useApi();
 
   const [resources, setResources] = useState([]);
   const [rosterData, setRosterData] = useState([]);
-  const [charts, setCharts] = useState({ deps: [], locs: {} });
+  const [squadAllocation, setSquadAllocation] = useState([]);
+  const [billableByLoc, setBillableByLoc] = useState([]);
+  const [squads, setSquads] = useState([]);
   const [loading, setLoading] = useState(true);
 
   // Filter States
   const [filterName, setFilterName] = useState('');
-  const [filterDept, setFilterDept] = useState('');
+  const [filterSquad, setFilterSquad] = useState('');
   const [filterLoc, setFilterLoc] = useState('');
 
   useEffect(() => {
@@ -27,15 +39,18 @@ export default function Resources() {
       const qs = selectedMonths.length > 0 ? `?months=${selectedMonths.join(',')}` : '';
 
       try {
-        const [resData, depsData, locsData, roster] = await Promise.all([
+        const [resData, roster, squadData, locData, squadList] = await Promise.all([
           req(`/resources${qs}`),
-          req(`/charts/departments${qs}`),
-          req(`/charts/locations${qs}`),
-          req(`/analytics/resource-roster${qs}`)
+          req(`/analytics/resource-roster${qs}`),
+          req(`/squads/allocation${qs}`),
+          req('/squads/billable-by-location'),
+          req('/squads/list')
         ]);
         setResources(resData || []);
-        setCharts({ deps: depsData || [], locs: locsData || {} });
         setRosterData(roster || []);
+        setSquadAllocation(squadData || []);
+        setBillableByLoc(locData || []);
+        setSquads(squadList || []);
       } catch (err) {
         console.error("Failed to load resources", err);
       } finally {
@@ -45,7 +60,7 @@ export default function Resources() {
     fetchData();
   }, [selectedMonths, loadingInitial, req]);
 
-  // Build multi-month roster from per-employee-per-month data
+  // Build multi-month roster with squad join
   const { rosterRows, rosterMonths } = useMemo(() => {
     const months = [...new Set(rosterData.map(r => r.yearMonth))].sort();
     const empMap = {};
@@ -71,18 +86,28 @@ export default function Resources() {
     return { rosterRows: rows, rosterMonths: months };
   }, [rosterData]);
 
+  // All derived data using useMemo MUST be before any early returns (Rules of Hooks)
+  const uniqueLocs = useMemo(() =>
+    [...new Set(resources.map(r => r.location))].filter(Boolean).sort(),
+    [resources]
+  );
+
+  const filteredRoster = useMemo(() =>
+    rosterRows.filter(r => {
+      const matchName = !filterName || (r.fullName || '').toLowerCase().includes(filterName.toLowerCase());
+      const matchLoc = !filterLoc || r.location === filterLoc;
+      return matchName && matchLoc;
+    }),
+    [rosterRows, filterName, filterLoc]
+  );
+
   // CSV Export
   const exportCSV = () => {
-    const headers = ['Employee ID', 'Name', 'Department', 'Location', ...rosterMonths.map(m => `${m} (Hrs)`), 'Grand Total', 'Billable', 'Utilization %'];
-    const csvRows = rosterRows.filter(r => {
-      const matchName = !filterName || (r.fullName || '').toLowerCase().includes(filterName.toLowerCase());
-      const matchDept = !filterDept || r.department === filterDept;
-      const matchLoc = !filterLoc || r.location === filterLoc;
-      return matchName && matchDept && matchLoc;
-    }).map(r => [
+    const headers = ['Employee ID', 'Name', 'Squad', 'Location', ...rosterMonths.map(m => `${m} (Hrs)`), 'Grand Total', 'Billable', 'Utilization %'];
+    const csvRows = filteredRoster.map(r => [
       r.employeeId,
       `"${r.fullName || ''}"`,
-      `"${r.department || ''}"`,
+      `"${r.squad || ''}"`,
       `"${r.location || ''}"`,
       ...rosterMonths.map(m => r.months[m]?.total || 0),
       r.grandTotal.toFixed(1),
@@ -114,44 +139,43 @@ export default function Resources() {
   const totalHr = resources.reduce((acc, r) => acc + r.totalHours, 0);
   const totalBillHr = resources.reduce((acc, r) => acc + r.billableHours, 0);
   const avgBillable = totalHr > 0 ? Math.round((totalBillHr / totalHr) * 100) : 0;
-  const topDept = charts.deps.length > 0 ? charts.deps[0].department : 'N/A';
 
   const fmtHr = (n) => (n || 0).toLocaleString(undefined, { maximumFractionDigits: 1 });
 
-  // --- Filtering Logic ---
-  const uniqueDepts = [...new Set(resources.map(r => r.department))].filter(Boolean).sort();
-  const uniqueLocs = [...new Set(resources.map(r => r.location))].filter(Boolean).sort();
-
-  const filteredRoster = rosterRows.filter(r => {
-    const matchName = !filterName || (r.fullName || '').toLowerCase().includes(filterName.toLowerCase());
-    const matchDept = !filterDept || r.department === filterDept;
-    const matchLoc = !filterLoc || r.location === filterLoc;
-    return matchName && matchDept && matchLoc;
-  });
-
-  // --- Chart Setup ---
-  const deptData = {
-    labels: charts.deps.map(d => d.department.substring(0, 15)),
-    datasets: [{
-      label: 'Hours',
-      data: charts.deps.map(d => d.hours),
-      backgroundColor: chartColors.secondary,
-      borderRadius: 4
-    }]
+  // --- Squad Allocation Chart ---
+  const squadChartData = {
+    labels: squadAllocation.map(s => s.squad || 'Unassigned'),
+    datasets: [
+      {
+        label: 'Billable',
+        data: squadAllocation.map(s => s.billableCount),
+        backgroundColor: chartColors.primary,
+        borderRadius: 4
+      },
+      {
+        label: 'Non-Billable',
+        data: squadAllocation.map(s => s.totalResources - s.billableCount),
+        backgroundColor: chartColors.slate,
+        borderRadius: 4
+      }
+    ]
   };
 
-  const locLabels = Object.keys(charts.locs);
-  const locCounts = Object.values(charts.locs);
-  const hasLocData = locLabels.length > 0;
-  const locColors = [chartColors.primary, chartColors.emerald, chartColors.tertiary, chartColors.slate, chartColors.error];
-
-  const locData = {
-    labels: locLabels,
-    datasets: [{
-      data: locCounts,
-      backgroundColor: locColors.slice(0, locLabels.length),
-      borderWidth: 0
-    }]
+  // --- Billable by Location Chart ---
+  const locChartData = {
+    labels: billableByLoc.map(l => l.location),
+    datasets: [
+      {
+        label: 'Billable',
+        data: billableByLoc.map(l => l.billable),
+        backgroundColor: '#2563eb'
+      },
+      {
+        label: 'Non-Billable',
+        data: billableByLoc.map(l => l.nonBillable),
+        backgroundColor: '#94a3b8'
+      }
+    ]
   };
 
   return (
@@ -167,10 +191,6 @@ export default function Resources() {
           <h2 className="text-3xl font-bold tracking-tight text-on-surface">Resource Intelligence</h2>
         </div>
         <div className="flex gap-3">
-          <button className="px-4 py-2 bg-surface-container-low text-on-surface text-sm font-semibold rounded hover:bg-surface-container-high transition-colors flex items-center gap-2">
-            <span className="material-symbols-outlined text-lg">filter_list</span>
-            Advanced Filters
-          </button>
           <button
             onClick={exportCSV}
             className="px-4 py-2 bg-primary text-white text-sm font-semibold rounded flex items-center gap-2 hover:opacity-90 transition-opacity"
@@ -181,7 +201,8 @@ export default function Resources() {
         </div>
       </header>
 
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+      {/* KPI Cards — removed Leading Department */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
         <KpiCard title="Tracked Headcount" value={activeEmps.toLocaleString()} icon="groups" highlight />
         <KpiCard
           title="Avg Billability"
@@ -190,29 +211,43 @@ export default function Resources() {
           trend={`${fmtHr(totalBillHr)} billable hours`}
           trendIcon="payments"
         />
-        <KpiCard title="Leading Department" value={topDept} icon="corporate_fare" />
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        <ChartCard title="Department Allocation" subtitle="Top 10 departments by effort" className="lg:col-span-2">
-          {charts.deps.length > 0 ? (
-            <Bar data={deptData} options={{ ...commonOptions, plugins: { legend: { display: false } } }} />
+      {/* Charts: Squad Allocation + Billable by Location */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        <ChartCard title="Squad Allocation" subtitle="Resource distribution by squad (DU)">
+          {squadAllocation.length > 0 ? (
+            <Bar data={squadChartData} options={{
+              ...commonOptions,
+              plugins: { legend: { position: 'bottom', labels: { font: { size: 10 }, usePointStyle: true, padding: 12 } } },
+              scales: {
+                x: { stacked: true, grid: { display: false } },
+                y: { stacked: true, grid: { color: chartColors.gridLines, drawBorder: false } }
+              }
+            }} />
           ) : (
-             <div className="flex h-full items-center justify-center text-on-surface-variant italic text-sm">No department data</div>
+            <div className="flex h-full items-center justify-center text-on-surface-variant italic text-sm">Upload Demand Capacity file to see squad data</div>
           )}
         </ChartCard>
-        <ChartCard title="Global Locations" subtitle="Active resources by region">
-          {hasLocData ? (
-             <div className="h-full flex items-center justify-center pb-4 pt-2">
-                <Doughnut data={locData} options={donutOptions} />
-             </div>
+
+        <ChartCard title="Billable vs Non-Billable by Location" subtitle="Resource allocation across locations">
+          {billableByLoc.length > 0 ? (
+            <Bar data={locChartData} options={{
+              ...commonOptions,
+              indexAxis: 'y',
+              plugins: { legend: { position: 'bottom', labels: { font: { size: 10 }, usePointStyle: true, padding: 12 } } },
+              scales: {
+                x: { stacked: true, grid: { color: chartColors.gridLines, drawBorder: false } },
+                y: { stacked: true, grid: { display: false } }
+              }
+            }} />
           ) : (
-            <div className="flex h-full items-center justify-center text-on-surface-variant italic text-sm">No location data</div>
+            <div className="flex h-full items-center justify-center text-on-surface-variant italic text-sm">Upload Demand Capacity file to see location data</div>
           )}
         </ChartCard>
       </div>
 
-      {/* Filters */}
+      {/* Filters — Squad instead of Department */}
       <div className="bg-surface-container-low border border-outline-variant/10 rounded-xl p-4 flex flex-col md:flex-row gap-4">
         <div className="flex-1">
           <label className="block text-[10px] font-bold text-on-surface-variant mb-1.5 uppercase tracking-wide">Search Name</label>
@@ -228,14 +263,14 @@ export default function Resources() {
           </div>
         </div>
         <div className="flex-1">
-          <label className="block text-[10px] font-bold text-on-surface-variant mb-1.5 uppercase tracking-wide">Department</label>
+          <label className="block text-[10px] font-bold text-on-surface-variant mb-1.5 uppercase tracking-wide">Squad</label>
           <select
-            value={filterDept}
-            onChange={(e) => setFilterDept(e.target.value)}
+            value={filterSquad}
+            onChange={(e) => setFilterSquad(e.target.value)}
             className="w-full bg-surface-container-lowest border border-outline-variant/30 text-sm text-on-surface rounded-lg px-3 py-2 outline-none focus:border-primary transition-colors"
           >
-            <option value="">All Departments</option>
-            {uniqueDepts.map(d => <option key={d} value={d}>{d}</option>)}
+            <option value="">All Squads</option>
+            {squads.map(s => <option key={s} value={s}>{s}</option>)}
           </select>
         </div>
         <div className="flex-1">
@@ -251,7 +286,7 @@ export default function Resources() {
         </div>
       </div>
 
-      {/* Multi-Month Resource Roster Table */}
+      {/* Multi-Month Resource Roster Table with Heatmap */}
       <div className="bg-surface-container-lowest rounded-xl overflow-hidden shadow-sm flex flex-col border border-outline-variant/10">
         <div className="p-6 border-b border-outline-variant/10 flex justify-between items-center">
           <div>
@@ -262,22 +297,33 @@ export default function Resources() {
           </div>
           {loading && <span className="material-symbols-outlined text-sm text-slate-500 animate-spin">sync</span>}
         </div>
+
+        {/* Heatmap Legend */}
+        <div className="px-6 py-2 border-b border-outline-variant/10 flex items-center gap-3 text-[10px] text-on-surface-variant">
+          <span className="font-bold uppercase tracking-wider">Heatmap:</span>
+          <div className="flex items-center gap-1"><div className="w-4 h-3 bg-blue-100 rounded"></div> 1-80h</div>
+          <div className="flex items-center gap-1"><div className="w-4 h-3 bg-blue-400 rounded"></div> 81-120h</div>
+          <div className="flex items-center gap-1"><div className="w-4 h-3 bg-blue-600 rounded"></div> 121-160h</div>
+          <div className="flex items-center gap-1"><div className="w-4 h-3 bg-orange-400 rounded"></div> 161-200h</div>
+          <div className="flex items-center gap-1"><div className="w-4 h-3 bg-red-500 rounded"></div> 200h+</div>
+        </div>
+
         <div className="overflow-x-auto">
           <table className="w-full text-left border-collapse text-sm">
             <thead>
               <tr className="bg-surface-container border-b border-outline-variant/10">
                 <th className="px-4 py-3 text-[10px] font-bold uppercase tracking-widest text-on-surface-variant sticky left-0 bg-surface-container z-10">Employee</th>
-                <th className="px-4 py-3 text-[10px] font-bold uppercase tracking-widest text-on-surface-variant">Department</th>
+                <th className="px-4 py-3 text-[10px] font-bold uppercase tracking-widest text-on-surface-variant">{groupBy === 'squad' ? 'Squad' : 'Department'}</th>
                 <th className="px-4 py-3 text-[10px] font-bold uppercase tracking-widest text-on-surface-variant">Location</th>
                 {rosterMonths.map(m => (
-                  <th key={m} className="px-4 py-3 text-[10px] font-bold uppercase tracking-widest text-on-surface-variant text-right">{m}</th>
+                  <th key={m} className="px-4 py-3 text-[10px] font-bold uppercase tracking-widest text-on-surface-variant text-center">{m}</th>
                 ))}
                 <th className="px-4 py-3 text-[10px] font-bold uppercase tracking-widest text-on-surface-variant text-right">Total</th>
                 <th className="px-4 py-3 text-[10px] font-bold uppercase tracking-widest text-on-surface-variant text-right">Util %</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-outline-variant/10">
-              {filteredRoster.map((r, i) => {
+              {filteredRoster.map((r) => {
                 const utilPct = r.grandTotal > 0 ? Math.round((r.grandBillable / r.grandTotal) * 100) : 0;
                 return (
                   <tr key={r.employeeId} className="hover:bg-surface-container-low/50 transition-colors">
@@ -292,14 +338,20 @@ export default function Resources() {
                         </div>
                       </div>
                     </td>
-                    <td className="px-4 py-3 text-xs text-on-surface">{r.department}</td>
+                    <td className="px-4 py-3 text-xs text-on-surface">{groupBy === 'squad' ? (squadMap[r.employeeId] || '-') : r.department}</td>
                     <td className="px-4 py-3 text-xs text-on-surface">{r.location || '-'}</td>
                     {rosterMonths.map(m => {
                       const val = r.months[m]?.total || 0;
-                      const cellColor = val >= 160 ? 'text-red-600 font-bold' : val >= 120 ? 'text-amber-600 font-bold' : val > 0 ? 'text-on-surface font-semibold' : 'text-slate-300';
+                      const heatColor = getHoursColor(val);
                       return (
-                        <td key={m} className={`px-4 py-3 text-xs text-right ${cellColor}`}>
-                          {val > 0 ? fmtHr(val) : '-'}
+                        <td key={m} className="px-1 py-1 text-center">
+                          {val > 0 ? (
+                            <div className={`rounded px-2 py-1 text-xs font-bold ${heatColor}`} title={`${fmtHr(val)}h (${r.months[m]?.billable ? Math.round((r.months[m].billable / val) * 100) : 0}% billable)`}>
+                              {fmtHr(val)}
+                            </div>
+                          ) : (
+                            <span className="text-xs text-slate-300">-</span>
+                          )}
                         </td>
                       );
                     })}

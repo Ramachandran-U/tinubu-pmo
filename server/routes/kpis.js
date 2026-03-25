@@ -1,6 +1,7 @@
 const express = require('express');
 const { pool } = require('../db');
 const shared = require('./shared');
+const { SKYE_EXCLUSION } = require('./shared');
 
 const router = express.Router();
 router.use(shared);
@@ -45,13 +46,14 @@ router.get('/', async (req, res, next) => {
     if (selectedMonths) hoursQuery += ` WHERE year_month = ANY($1::text[])`;
 
     let distinctQuery = `
-      SELECT 
+      SELECT
         COUNT(DISTINCT employee_id) as "uniqueEmployees",
         COUNT(DISTINCT client_name) as "uniqueClients",
         COUNT(DISTINCT project_name) as "uniqueProjects"
       FROM timelog_raw
+      WHERE ${SKYE_EXCLUSION}
     `;
-    if (selectedMonths) distinctQuery += ` WHERE year_month = ANY($1::text[])`;
+    if (selectedMonths) distinctQuery += ` AND year_month = ANY($1::text[])`;
 
     let attQuery = `
       SELECT 

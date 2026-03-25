@@ -74,6 +74,7 @@ export default function Overview() {
   const [kpiTrends, setKpiTrends] = useState([]);
   const [alerts, setAlerts] = useState([]);
   const [dismissedAlerts, setDismissedAlerts] = useState(new Set());
+  const [designations, setDesignations] = useState([]);
 
   useEffect(() => {
     async function fetchCharts() {
@@ -81,13 +82,15 @@ export default function Overview() {
       const qs = selectedMonths.length > 0 ? `?months=${selectedMonths.join(',')}` : '';
 
       try {
-        const [clients, approval, alertData] = await Promise.all([
+        const [clients, approval, alertData, desigData] = await Promise.all([
           req(`/charts/clients${qs}`),
           req(`/charts/approval${qs}`),
-          req(`/analytics/alerts${qs}`)
+          req(`/analytics/alerts${qs}`),
+          req('/squads/designations')
         ]);
         setCharts({ clients, approval });
         setAlerts(alertData || []);
+        setDesignations(desigData || []);
       } catch (err) {
         console.error("Failed to load overview charts", err);
       }
@@ -95,7 +98,7 @@ export default function Overview() {
     fetchCharts();
   }, [selectedMonths, loadingInitial, req]);
 
-  // Fetch temporal KPI data — use all available months for sparkline context
+  // Fetch temporal KPI data
   useEffect(() => {
     async function fetchTrends() {
       if (loadingInitial || availableMonths.length === 0) return;
@@ -129,35 +132,37 @@ export default function Overview() {
   const latestIdx = sortedTrends.findIndex(t => (t.yearMonth || t.year_month) === latestMonth);
   const prevTrend = latestIdx > 0 ? sortedTrends[latestIdx - 1] : null;
 
-  // Chart Data preparation
-  const clientData = {
-    labels: charts.clients.slice(0, 7).map(c => c.client.substring(0, 15) + (c.client.length > 15 ? '...' : '')),
+  // Approval % calculation
+  const appValues = charts.approval;
+  const hasApprovalData = Object.keys(appValues).length > 0;
+  const totalApprovalHours = (appValues['Approved'] || 0) + (appValues['Pending'] || 0) + (appValues['Draft'] || 0) + (appValues['Not Submitted'] || 0);
+  const approvedHours = appValues['Approved'] || 0;
+  const approvalPct = totalApprovalHours > 0 ? Math.round((approvedHours / totalApprovalHours) * 100) : 0;
+  const approvalColor = approvalPct >= 90 ? 'text-emerald-600' : approvalPct >= 70 ? 'text-amber-600' : 'text-red-600';
+  const approvalBg = approvalPct >= 90 ? 'bg-emerald-500' : approvalPct >= 70 ? 'bg-amber-500' : 'bg-red-500';
+
+  // Pending actions
+  const pendingCount = (appValues['Pending'] || 0) + (appValues['Not Submitted'] || 0) + (appValues['Draft'] || 0);
+  const pendingTimesheets = appValues['Pending'] || 0;
+  const notSubmitted = appValues['Not Submitted'] || 0;
+  const draftCount = appValues['Draft'] || 0;
+
+  // Designation bar chart data
+  const desigChartData = {
+    labels: designations.map(d => d.designation.length > 25 ? d.designation.substring(0, 25) + '...' : d.designation),
     datasets: [{
-      label: 'Total Hours',
-      data: charts.clients.slice(0, 7).map(c => c.hours),
+      label: 'Resources',
+      data: designations.map(d => d.count),
       backgroundColor: chartColors.primary,
       borderRadius: 4
     }]
   };
 
-  const appValues = charts.approval;
-  const hasApprovalData = Object.keys(appValues).length > 0;
-
   const approvalData = {
     labels: ['Approved', 'Pending', 'Draft', 'Not Submitted'],
     datasets: [{
-      data: [
-        appValues['Approved'] || 0,
-        appValues['Pending'] || 0,
-        appValues['Draft'] || 0,
-        appValues['Not Submitted'] || 0
-      ],
-      backgroundColor: [
-        chartColors.emerald,
-        chartColors.primary,
-        chartColors.slate,
-        chartColors.error
-      ],
+      data: [approvedHours, appValues['Pending'] || 0, appValues['Draft'] || 0, appValues['Not Submitted'] || 0],
+      backgroundColor: [chartColors.emerald, chartColors.primary, chartColors.slate, chartColors.error],
       borderWidth: 0,
       hoverOffset: 4
     }]
@@ -168,8 +173,12 @@ export default function Overview() {
       {/* Executive Page Header */}
       <div className="flex flex-col md:flex-row md:items-end justify-between gap-6">
         <div>
-          <h3 className="text-[0.6875rem] font-bold uppercase tracking-[0.15em] text-outline mb-1">Analytical Overview</h3>
+          <h3 className="text-[0.6875rem] font-bold uppercase tracking-[0.15em] text-outline mb-1">Portfolio Intelligence</h3>
           <h1 className="text-4xl font-extrabold text-on-surface tracking-tight leading-none">Executive Summary</h1>
+        </div>
+        <div className="flex items-center gap-1.5 text-[10px] text-on-surface-variant bg-surface-container-low px-3 py-1.5 rounded-full">
+          <span className="material-symbols-outlined text-xs">info</span>
+          Excluding Skye projects from all reports
         </div>
       </div>
 
@@ -211,8 +220,8 @@ export default function Overview() {
         );
       })()}
 
-      {/* Temporal KPI Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
+      {/* Temporal KPI Cards — 6 cards now (added Approval %) */}
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-6 gap-4">
         <TemporalKpiCard
           title="Total Hours"
           value={fmtHr(kpis?.totalHours)}
@@ -256,21 +265,56 @@ export default function Overview() {
           sparklineData={sortedTrends.map(t => t.uniqueEmployees)}
           sparklineColor={chartColors.tertiary}
         />
+
+        {/* NEW: Timesheet Approval % KPI */}
+        <div className={`bg-surface-container-lowest p-5 rounded-lg border border-outline-variant/10 shadow-sm flex flex-col gap-2 transition-all hover:bg-surface-bright border-l-4 ${approvalPct >= 90 ? 'border-l-emerald-500' : approvalPct >= 70 ? 'border-l-amber-500' : 'border-l-red-500'}`}>
+          <div className="flex items-center justify-between text-on-surface-variant">
+            <span className="text-[10px] font-bold uppercase tracking-widest">Approval Status</span>
+            <span className="material-symbols-outlined text-lg">fact_check</span>
+          </div>
+          <div>
+            <span className={`text-3xl font-extrabold tracking-tight ${approvalColor}`}>{approvalPct}%</span>
+            <p className="text-[10px] text-on-surface-variant mt-1">
+              {fmtHr(approvedHours)}h / {fmtHr(totalApprovalHours)}h approved
+            </p>
+          </div>
+          <div className="h-1.5 w-full bg-slate-200 rounded-full overflow-hidden">
+            <div className={`h-full rounded-full transition-all duration-500 ${approvalBg}`} style={{ width: `${approvalPct}%` }}></div>
+          </div>
+        </div>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        {/* NEW: Designation-wise Resource Count Bar Chart (replaces Client Allocation) */}
         <ChartCard
-          title="Client Allocation"
-          subtitle="Top 7 clients by executed hours"
+          title="Designation-wise Resource Count"
+          subtitle="Resource distribution across job roles"
           className="lg:col-span-2"
         >
-          {charts.clients.length > 0 ? (
+          {designations.length > 0 ? (
             <Bar
-              data={clientData}
-              options={{ ...commonOptions, plugins: { legend: { display: false } } }}
+              data={desigChartData}
+              options={{
+                ...commonOptions,
+                indexAxis: 'y',
+                plugins: {
+                  legend: { display: false },
+                  tooltip: {
+                    callbacks: {
+                      label: (ctx) => `${ctx.raw} resources`
+                    }
+                  }
+                },
+                scales: {
+                  x: { grid: { color: chartColors.gridLines, drawBorder: false }, ticks: { font: { size: 10 } } },
+                  y: { grid: { display: false }, ticks: { font: { size: 10, weight: 600 } } }
+                }
+              }}
             />
           ) : (
-            <div className="flex h-full items-center justify-center text-slate-500 italic text-sm">No client data</div>
+            <div className="flex h-full items-center justify-center text-slate-500 italic text-sm">
+              No designation data — upload Demand Capacity file
+            </div>
           )}
         </ChartCard>
 
@@ -344,7 +388,7 @@ export default function Overview() {
           </div>
         </div>
 
-        {/* Approval Breakdown Progress Bars */}
+        {/* Approval Breakdown + Pending Actions */}
         <div className="bg-surface-container-low rounded-xl p-8 flex flex-col gap-6">
           <div className="flex items-center justify-between">
             <div>
@@ -354,8 +398,8 @@ export default function Overview() {
             <span className="material-symbols-outlined text-primary text-xl">fact_check</span>
           </div>
           {(() => {
-            const total = (appValues['Approved'] || 0) + (appValues['Pending'] || 0) + (appValues['Draft'] || 0) + (appValues['Not Submitted'] || 0);
-            const approvedPct = total > 0 ? Math.round(((appValues['Approved'] || 0) / total) * 100) : 0;
+            const total = totalApprovalHours;
+            const approvedPctBar = total > 0 ? Math.round((approvedHours / total) * 100) : 0;
             const pendingPct = total > 0 ? Math.round(((appValues['Pending'] || 0) / total) * 100) : 0;
             const rejectedPct = total > 0 ? Math.round((((appValues['Draft'] || 0) + (appValues['Not Submitted'] || 0)) / total) * 100) : 0;
             return (
@@ -363,10 +407,10 @@ export default function Overview() {
                 <div className="space-y-2">
                   <div className="flex justify-between text-[11px] font-bold uppercase tracking-wider">
                     <span>Approved</span>
-                    <span className="text-primary">{approvedPct}%</span>
+                    <span className="text-primary">{approvedPctBar}%</span>
                   </div>
                   <div className="h-3 w-full bg-slate-200 rounded-sm">
-                    <div className="h-full bg-primary rounded-sm transition-all duration-500" style={{ width: `${approvedPct}%` }}></div>
+                    <div className="h-full bg-primary rounded-sm transition-all duration-500" style={{ width: `${approvedPctBar}%` }}></div>
                   </div>
                 </div>
                 <div className="space-y-2">
@@ -390,17 +434,40 @@ export default function Overview() {
               </div>
             );
           })()}
-          <div className="mt-4 p-4 bg-surface-container-lowest rounded-lg border border-outline-variant/10 flex items-center justify-between">
-            <div className="flex items-center gap-3">
+
+          {/* FIXED: Pending Actions — now shows real breakdown */}
+          <div className="mt-4 p-4 bg-surface-container-lowest rounded-lg border border-outline-variant/10">
+            <div className="flex items-center gap-3 mb-3">
               <div className="h-10 w-10 rounded-full bg-error-container flex items-center justify-center text-error">
                 <span className="material-symbols-outlined">assignment_late</span>
               </div>
               <div>
                 <p className="text-xs font-bold">Pending Actions</p>
-                <p className="text-[10px] text-on-surface-variant">{appValues['Pending'] || 0} timesheets need review</p>
+                <p className="text-[10px] text-on-surface-variant">{pendingCount > 0 ? `${pendingCount} items require attention` : 'All caught up!'}</p>
               </div>
             </div>
-            <button className="text-[10px] font-bold text-primary underline">REVIEW ALL</button>
+            {pendingCount > 0 && (
+              <div className="space-y-1.5 pl-[52px]">
+                {pendingTimesheets > 0 && (
+                  <div className="flex items-center gap-2 text-xs">
+                    <span className="h-1.5 w-1.5 rounded-full bg-blue-500"></span>
+                    <span className="text-on-surface-variant">{fmtHr(pendingTimesheets)}h pending review</span>
+                  </div>
+                )}
+                {notSubmitted > 0 && (
+                  <div className="flex items-center gap-2 text-xs">
+                    <span className="h-1.5 w-1.5 rounded-full bg-red-500"></span>
+                    <span className="text-on-surface-variant">{fmtHr(notSubmitted)}h not submitted</span>
+                  </div>
+                )}
+                {draftCount > 0 && (
+                  <div className="flex items-center gap-2 text-xs">
+                    <span className="h-1.5 w-1.5 rounded-full bg-slate-400"></span>
+                    <span className="text-on-surface-variant">{fmtHr(draftCount)}h in draft</span>
+                  </div>
+                )}
+              </div>
+            )}
           </div>
         </div>
       </div>
