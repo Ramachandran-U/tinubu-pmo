@@ -41,7 +41,7 @@ export default function DataTable({
   }, [data, sortKey, sortAsc]);
 
   return (
-    <div className="bg-surface-container-lowest rounded-xl overflow-hidden shadow-sm flex flex-col border border-outline-variant/10">
+    <div className="bg-surface-container-lowest rounded-xl overflow-hidden shadow-sm flex flex-col border border-outline-variant/10 animate-fade-in">
       {(title || subtitle) && (
         <div className="p-6 border-b border-outline-variant/10 flex justify-between items-center bg-surface-container-lowest">
           <div>
@@ -77,7 +77,7 @@ export default function DataTable({
           </thead>
           <tbody className="divide-y divide-outline-variant/10">
             {sortedData.map((row, i) => (
-              <tr key={i} className="hover:bg-surface-container-low/50 transition-colors group">
+              <tr key={i} className="hover:bg-surface-container-low/50 transition-colors group animate-fade-in" style={{ animationDelay: `${Math.min(i, 10) * 30}ms` }}>
                 {columns.map(col => (
                   <td key={col.key} className={`px-6 py-4 ${col.rightAlign ? 'text-right' : ''}`}>
                     {col.render ? col.render(row, row[col.key]) : (

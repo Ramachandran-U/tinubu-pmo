@@ -1,24 +1,18 @@
-/**
- * KpiCard - A reusable metric display card based on the design philosophy.
- * @param {string} title - Uppercase label
- * @param {string} value - The main large metric
- * @param {string} icon - Material Symbols icon name
- * @param {string} trend - Optional subtext under the value
- * @param {string} trendIcon - Optional icon for the subtext
- * @param {string} trendColor - Tailwind color class for the trend text
- * @param {boolean} highlight - If true, gives the label/icon an accent color
- */
-export default function KpiCard({ 
-  title, 
-  value, 
-  icon, 
-  trend, 
-  trendIcon, 
+export default function KpiCard({
+  title,
+  value,
+  icon,
+  trend,
+  trendIcon,
   trendColor = "text-emerald-600",
-  highlight = false
+  highlight = false,
+  stagger = 0
 }) {
   return (
-    <div className="bg-surface-container-lowest p-5 rounded-lg border border-outline-variant/10 shadow-sm flex flex-col gap-2 transition-all hover:bg-surface-bright">
+    <div
+      className="bg-surface-container-lowest p-5 rounded-lg border border-outline-variant/10 shadow-sm flex flex-col gap-2 hover:bg-surface-bright card-hover animate-fade-in"
+      style={stagger ? { animationDelay: `${stagger * 50}ms` } : undefined}
+    >
       <div className={`flex items-center justify-between ${highlight ? 'text-primary' : 'text-on-surface-variant'}`}>
         <span className="text-[10px] font-bold uppercase tracking-widest">{title}</span>
         {icon && <span className="material-symbols-outlined text-lg">{icon}</span>}

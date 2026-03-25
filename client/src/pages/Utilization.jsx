@@ -36,18 +36,19 @@ export default function Utilization() {
       const allQs = availableMonths.length > 0 ? `?months=${availableMonths.join(',')}` : qs;
 
       try {
-        const [heatData, logsData, compData, deptData, attData] = await Promise.all([
+        // Use Promise.allSettled so one failed endpoint doesn't kill the rest
+        const [heatRes, logsRes, compRes, deptRes, attRes] = await Promise.allSettled([
           req(`/heatmap${qs}`),
           req(`/timelog${qs}${qs ? '&' : '?'}pageSize=200`),
           req(`/analytics/compliance${allQs}`),
           req(`/analytics/dept-heatmap${allQs}`),
           req(`/analytics/attendance-trend${allQs}`)
         ]);
-        setHeatmap(heatData || []);
-        setTimelogs(logsData?.rows || []);
-        setCompliance(compData || []);
-        setDeptHeatmap(deptData || []);
-        setAttendanceTrend(attData || []);
+        setHeatmap(heatRes.status === 'fulfilled' ? (heatRes.value || []) : []);
+        setTimelogs(logsRes.status === 'fulfilled' ? (logsRes.value?.rows || []) : []);
+        setCompliance(compRes.status === 'fulfilled' ? (compRes.value || []) : []);
+        setDeptHeatmap(deptRes.status === 'fulfilled' ? (deptRes.value || []) : []);
+        setAttendanceTrend(attRes.status === 'fulfilled' ? (attRes.value || []) : []);
       } catch (err) {
         console.error("Failed to load utilization", err);
       } finally {

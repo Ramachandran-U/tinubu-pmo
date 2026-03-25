@@ -70,26 +70,85 @@ body {
   vertical-align: middle;
 }
 
-/* Custom Scrollbar for modern look */
-::-webkit-scrollbar {
-  width: 8px;
-  height: 8px;
-}
-::-webkit-scrollbar-track {
-  background: var(--color-surface-container-low);
-}
-::-webkit-scrollbar-thumb {
-  background: var(--color-outline-variant);
-  border-radius: 4px;
-}
-::-webkit-scrollbar-thumb:hover {
-  background: var(--color-outline);
+/* ── Scrollbar ── */
+::-webkit-scrollbar { width: 8px; height: 8px; }
+::-webkit-scrollbar-track { background: var(--color-surface-container-low); }
+::-webkit-scrollbar-thumb { background: var(--color-outline-variant); border-radius: 4px; }
+::-webkit-scrollbar-thumb:hover { background: var(--color-outline); }
+.hide-scrollbar::-webkit-scrollbar { display: none; }
+.hide-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+
+/* ══════════════════════════════════════════════════════════════
+   ANIMATIONS — Fluid entrance transitions for UI elements
+   ══════════════════════════════════════════════════════════════ */
+
+/* Fade-in on mount */
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
 }
 
-.hide-scrollbar::-webkit-scrollbar {
-  display: none;
+/* Scale-fade for charts */
+@keyframes scaleFadeIn {
+  from { opacity: 0; transform: scale(0.96); }
+  to { opacity: 1; transform: scale(1); }
 }
-.hide-scrollbar {
-  -ms-overflow-style: none; /* IE and Edge */
-  scrollbar-width: none; /* Firefox */
+
+/* Slide in from left (for page transitions) */
+@keyframes slideInRight {
+  from { opacity: 0; transform: translateX(-12px); }
+  to { opacity: 1; transform: translateX(0); }
+}
+
+/* Stagger entrance for cards/list items */
+.animate-fade-in {
+  animation: fadeIn 0.3s ease-out both;
+}
+
+.animate-scale-fade {
+  animation: scaleFadeIn 0.4s ease-out both;
+}
+
+.animate-slide-in {
+  animation: slideInRight 0.25s ease-out both;
+}
+
+/* Stagger delay utilities (40ms increments) */
+.stagger-1 { animation-delay: 40ms; }
+.stagger-2 { animation-delay: 80ms; }
+.stagger-3 { animation-delay: 120ms; }
+.stagger-4 { animation-delay: 160ms; }
+.stagger-5 { animation-delay: 200ms; }
+.stagger-6 { animation-delay: 240ms; }
+
+/* Page-level transition wrapper */
+.page-enter {
+  animation: fadeIn 0.25s ease-out both;
+}
+
+/* Interactive element transitions (buttons, toggles) */
+button, [role="button"], a {
+  transition: all 0.18s cubic-bezier(0.22, 1, 0.36, 1);
+}
+button:active, [role="button"]:active {
+  transform: scale(0.97);
+}
+
+/* Card hover lift effect */
+.card-hover {
+  transition: transform 0.2s cubic-bezier(0.22, 1, 0.36, 1), box-shadow 0.2s ease;
+}
+.card-hover:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.06);
+}
+
+/* Sidebar transition */
+.sidebar-transition {
+  transition: width 0.25s cubic-bezier(0.22, 1, 0.36, 1);
+}
+.sidebar-label {
+  transition: opacity 0.15s ease, width 0.2s ease;
+  overflow: hidden;
+  white-space: nowrap;
 }

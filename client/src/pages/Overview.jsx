@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { useData } from '../context/DataContext';
 import { useApi } from '../hooks/useApi';
 import ChartCard from '../components/ChartCard';
-import { chartColors, commonOptions } from '../charts/chart-config';
+import { chartColors, commonOptions, donutOptions } from '../charts/chart-config';
 import { Bar, Doughnut, Line } from 'react-chartjs-2';
 
 function Sparkline({ data, color = '#004ac6', height = 32 }) {
@@ -282,7 +282,7 @@ export default function Overview() {
              <div className="h-full flex items-center justify-center pb-4 pt-2">
                 <Doughnut
                   data={approvalData}
-                  options={{ ...commonOptions, cutout: '75%', plugins: { legend: { position: 'bottom' } } }}
+                  options={donutOptions}
                 />
              </div>
           ) : (

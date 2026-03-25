@@ -3,7 +3,7 @@ import { useData } from '../context/DataContext';
 import { useApi } from '../hooks/useApi';
 import KpiCard from '../components/KpiCard';
 import ChartCard from '../components/ChartCard';
-import { chartColors, commonOptions } from '../charts/chart-config';
+import { chartColors, commonOptions, donutOptions } from '../charts/chart-config';
 import { Bar, Doughnut } from 'react-chartjs-2';
 
 export default function Resources() {
@@ -204,7 +204,7 @@ export default function Resources() {
         <ChartCard title="Global Locations" subtitle="Active resources by region">
           {hasLocData ? (
              <div className="h-full flex items-center justify-center pb-4 pt-2">
-                <Doughnut data={locData} options={{ ...commonOptions, cutout: '70%', plugins: { legend: { position: 'bottom' } } }} />
+                <Doughnut data={locData} options={donutOptions} />
              </div>
           ) : (
             <div className="flex h-full items-center justify-center text-on-surface-variant italic text-sm">No location data</div>
