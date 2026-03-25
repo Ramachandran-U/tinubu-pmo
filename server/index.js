@@ -29,6 +29,7 @@ app.use('/api/heatmap', require('./routes/heatmap'));
 app.use('/api/charts', require('./routes/charts'));
 app.use('/api/analytics', require('./routes/analytics'));
 app.use('/api/squads', require('./routes/squads'));
+app.use('/api/chatbot', require('./routes/chatbot'));
 
 // ── Serve frontend in production ───────────────────────────
 if (process.env.NODE_ENV === 'production') {

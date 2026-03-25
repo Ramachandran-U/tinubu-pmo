@@ -1,6 +1,8 @@
 import { useState, useEffect } from 'react'
 import { useData } from './context/DataContext'
 import MonthPicker from './components/MonthPicker'
+import ChatBot from './components/ChatBot'
+import HelpPanel from './components/HelpPanel'
 import Overview from './pages/Overview'
 import Resources from './pages/Resources'
 import Utilization from './pages/Utilization'
@@ -68,6 +70,7 @@ function TabContent({ tabId }) {
 export default function App() {
   const { groupBy, setGroupBy } = useData()
   const [activeTab, setActiveTab] = useState('overview')
+  const [helpOpen, setHelpOpen] = useState(false)
 
   // Sidebar collapse state — persisted in localStorage
   const [collapsed, setCollapsed] = useState(() => {
@@ -158,8 +161,8 @@ export default function App() {
             </button>
           )}
           <div className={`space-y-1 ${collapsed ? 'flex flex-col items-center' : ''}`}>
-            <button className={`${collapsed ? 'p-2' : 'w-full flex items-center py-1.5'} text-slate-500 hover:text-slate-900`} title="Help">
-              <span className="material-symbols-outlined text-lg">{collapsed ? 'help' : ''}{!collapsed && 'help'}</span>
+            <button onClick={() => setHelpOpen(true)} className={`${collapsed ? 'p-2' : 'w-full flex items-center py-1.5'} text-slate-500 hover:text-slate-900`} title="Help">
+              <span className="material-symbols-outlined text-lg">help</span>
               {!collapsed && <span className="text-[10px] font-semibold uppercase tracking-widest ml-2">Help</span>}
             </button>
             <button className={`${collapsed ? 'p-2' : 'w-full flex items-center py-1.5'} text-slate-500 hover:text-slate-900`} title="Logout">
@@ -230,6 +233,8 @@ export default function App() {
           </div>
         </div>
       </main>
+      <ChatBot />
+      <HelpPanel isOpen={helpOpen} onClose={() => setHelpOpen(false)} />
     </div>
   )
 }
